@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
+import { sharedGalleryRouter } from './sharedGallery.routes';
 import authRoutes from './auth.routes';
 import freelancerPortalRoutes from './freelancerPortal.routes';
 import { metaIntegrationRouter } from './integration.routes';
@@ -30,6 +31,8 @@ const router = Router();
 router.use('/auth', authRoutes);
 router.use('/freelancer-portal', freelancerPortalRoutes);
 router.use('/integrations/meta', metaIntegrationRouter);
+// Public: the share token is the credential, so this sits before requireAuth.
+router.use('/shared-galleries', sharedGalleryRouter);
 
 // Everything below requires a valid session; each route additionally names the
 // permission it needs (§6 — authorization is never left to the frontend).

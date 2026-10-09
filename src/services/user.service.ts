@@ -362,7 +362,11 @@ export async function createUser(auth: AuthContext, input: CreateUserInput, ctx:
             data: input.roleIds.map((roleId) => ({ roleId, assignedBy: auth.userId })),
           },
         },
-        employeeProfile: input.profile ? { create: input.profile } : undefined,
+        // Every CRM user is a staff member, and every read path filters the
+        // directory on EMPLOYEE_DIRECTORY_FILTER. Creating a user without a
+        // profile left it invisible to GET /team and made a role change commit
+        // and then answer 404, so the profile is always created.
+        employeeProfile: { create: input.profile ?? {} },
       },
       select: PUBLIC_SELECT,
     });

@@ -1,11 +1,21 @@
-import { PrismaClient, RoleType } from '@prisma/client';
+import { RoleType } from '@prisma/client';
 import { hashPassword } from '../../src/utils/password';
 import { PERMISSIONS, SYSTEM_ROLES, permissionsForSystemRole } from '../../src/types/permissions';
 
-export const prisma = new PrismaClient();
+// Share the application's client rather than opening a second pool. Two pools
+// against one database made the reset TRUNCATE deadlock against connections the
+// app under test still held, failing whichever file happened to run next.
+export { prisma } from '../../src/config/prisma';
+import { prisma } from '../../src/config/prisma';
 
 /** Tables truncated between test cases. `permissions` is a static catalogue. */
 const TRUNCATE_EXCLUDE = new Set(['_prisma_migrations', 'permissions']);
+
+const isLockContention = (error: unknown): boolean => {
+  // 40P01 deadlock_detected, 55P03 lock_not_available.
+  const code = (error as { meta?: { code?: string } })?.meta?.code;
+  return code === '40P01' || code === '55P03';
+};
 
 export async function resetDatabase(): Promise<void> {
   const tables = await prisma.$queryRaw<Array<{ tablename: string }>>`
@@ -16,8 +26,24 @@ export async function resetDatabase(): Promise<void> {
     .filter((name) => !TRUNCATE_EXCLUDE.has(name))
     .map((name) => `"public"."${name}"`);
 
-  if (targets.length > 0) {
-    await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${targets.join(', ')} RESTART IDENTITY CASCADE`);
+  if (targets.length === 0) return;
+
+  // TRUNCATE needs an ACCESS EXCLUSIVE lock on every table at once. A pooled
+  // connection still finishing the previous case can hold a row lock and
+  // deadlock the reset, which failed whichever file happened to run next. A
+  // bounded lock wait plus retry makes the reset deterministic instead.
+  const statement = `TRUNCATE TABLE ${targets.join(', ')} RESTART IDENTITY CASCADE`;
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      await prisma.$transaction([
+        prisma.$executeRawUnsafe(`SET LOCAL lock_timeout = '4s'`),
+        prisma.$executeRawUnsafe(statement),
+      ]);
+      return;
+    } catch (error) {
+      if (attempt === 5 || !isLockContention(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
+    }
   }
 }
 
@@ -101,6 +127,9 @@ export async function seedTestOrganization(slug = 'test-studio'): Promise<TestOr
         passwordHash,
         status: 'ACTIVE',
         userRoles: { create: [{ roleId: roleIds[role] }] },
+        // The team directory lists employees, not bare user rows, so a seeded
+        // staff member needs the profile a real one would always have.
+        employeeProfile: { create: {} },
       },
     });
     return { id: user.id, email, password: PASSWORD };

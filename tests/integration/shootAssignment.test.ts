@@ -135,7 +135,9 @@ describe('shoot crew assignment', () => {
       .post(`${base}/shoots/${sameDateShoot.body.data.id}/assignments`)
       .send({ userId: org.member.id, role: 'LEAD_PHOTOGRAPHER' });
     expect(conflict.status).toBe(409);
-    expect(conflict.body.error.message).toBe('This employee is already assigned on this date.');
+    // The clash now names the person, the date and the shoot they are on.
+    expect(conflict.body.error.message).toContain('Member User');
+    expect(conflict.body.error.message).toMatch(/already assigned on/);
 
     await authed(token)
       .post(`${base}/shoots/${differentDateShoot.body.data.id}/assignments`)
@@ -173,12 +175,18 @@ describe('shoot crew assignment', () => {
   });
 
   it('blocks over-booking a freelancer beyond their daily limit', async () => {
-    const otherShoot = await prisma.shoot.findFirstOrThrow({ where: { id: shootId } });
+    // A single wedding legitimately runs several shoots in one day, so the
+    // daily limit only counts bookings on *other* projects. The clash has to be
+    // built across projects, exactly as the employee rule above is.
+    const otherProject = await authed(token)
+      .post(`${base}/projects`)
+      .send({ clientId, name: 'Over-booking Wedding', weddingDate: '2026-12-14' })
+      .expect(201);
 
     const second = await authed(token)
       .post(`${base}/shoots`)
       .send({
-        projectId: otherShoot.projectId,
+        projectId: otherProject.body.data.id,
         title: 'Second shoot same day',
         shootDate: '2026-12-14',
       })

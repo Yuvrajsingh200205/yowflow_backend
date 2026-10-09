@@ -29,5 +29,24 @@ export const authed = (token: string) => ({
   delete: (path: string) => request(app).delete(path).set('Authorization', `Bearer ${token}`),
 });
 
+/**
+ * Retries an assertion until it holds. Login writes its history and audit rows
+ * after the response is sent — on purpose, so signing in is not slowed by
+ * bookkeeping — which means reading them straight away is a race.
+ */
+export async function eventually<T>(check: () => Promise<T>, timeoutMs = 3000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown;
+  for (;;) {
+    try {
+      return await check();
+    } catch (error) {
+      lastError = error;
+      if (Date.now() >= deadline) throw lastError;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+}
+
 let counter = 0;
 export const idempotencyKey = (prefix = 'test') => `${prefix}-${Date.now()}-${counter++}`;

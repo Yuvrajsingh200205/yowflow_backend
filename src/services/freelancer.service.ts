@@ -464,8 +464,9 @@ export async function isFreelancerSearchable(
   return Boolean(freelancer);
 }
 
+const SEARCHABLE_SUBSCRIPTION_STATUSES: FreelancerSubscriptionStatus[] = ['ACTIVE'];
+
 function searchableFreelancerWhere(organizationId: string, now = new Date()): Prisma.FreelancerWhereInput {
-  void now;
   return {
     organizationId,
     deletedAt: null,
@@ -1137,6 +1138,13 @@ export async function connectConnection(
       include: { freelancer: { select: { id: true, fullName: true, primarySkill: true, maxShootsPerDay: true } } },
     });
     if (!existing) throw notFound('Freelancer connection');
+    // ASSIGNED, DECLINED and EXPIRED are terminal in CONNECTION_TRANSITIONS.
+    // updateConnection honours that; without the same guard here a second
+    // /connect reset an assigned connection to CONTACTED and left its
+    // ShootAssignment behind, so the booking and the connection diverged.
+    if (CONNECTION_TRANSITIONS[existing.status].length === 0) {
+      throw conflict(`Cannot connect a connection that is already ${existing.status}`);
+    }
     const searchable = await tx.freelancer.findFirst({
       where: { id: existing.freelancerId, ...searchableFreelancerWhere(auth.organizationId) },
       select: { id: true },

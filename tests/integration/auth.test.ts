@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { api, authed, base, login } from '../helpers/api';
+import { api, authed, base, eventually, login } from '../helpers/api';
 import { prisma, resetDatabase, seedTestOrganization, TestOrg } from '../helpers/factory';
 
 describe('authentication', () => {
@@ -57,8 +57,10 @@ describe('authentication', () => {
       .post(`${base}/auth/login`)
       .send({ email: org.admin.email, password: org.admin.password });
 
-    const history = await prisma.loginHistory.findMany({ orderBy: { createdAt: 'asc' } });
-    expect(history.map((h) => h.outcome)).toEqual(['INVALID_CREDENTIALS', 'SUCCESS']);
+    await eventually(async () => {
+      const history = await prisma.loginHistory.findMany({ orderBy: { createdAt: 'asc' } });
+      expect(history.map((h) => h.outcome)).toEqual(['INVALID_CREDENTIALS', 'SUCCESS']);
+    });
   });
 
   it('locks the account after repeated failures', async () => {
@@ -204,7 +206,18 @@ describe('authentication', () => {
     const response = await api().post(`${base}/auth/refresh`).send({});
 
     expect(response.status).toBe(401);
-    expect(setCookies(response)).toHaveLength(2);
+    // A CRM login also issues the freelancer portal pair for staff who have a
+    // freelancer profile, so a dead session has to clear all four. Leaving the
+    // portal cookies behind would survive a CRM logout.
+    const cleared = setCookies(response);
+    for (const name of [
+      'wpp_access_token',
+      'wpp_refresh_token',
+      'wpp_freelancer_access_token',
+      'wpp_freelancer_refresh_token',
+    ]) {
+      expect(cookieFor(cleared, name)).toMatch(new RegExp(`${name}=;`));
+    }
   });
 
   it('clears the auth cookies on logout and stops accepting them', async () => {
@@ -237,10 +250,12 @@ describe('authentication', () => {
 
   it('writes an audit row for a successful sign-in', async () => {
     await login(org.admin);
-    const audit = await prisma.auditLog.findFirst({
-      where: { action: 'LOGIN', actorId: org.admin.id },
+    await eventually(async () => {
+      const audit = await prisma.auditLog.findFirst({
+        where: { action: 'LOGIN', actorId: org.admin.id },
+      });
+      expect(audit).not.toBeNull();
+      expect(audit?.entityType).toBe('User');
     });
-    expect(audit).not.toBeNull();
-    expect(audit?.entityType).toBe('User');
   });
 });

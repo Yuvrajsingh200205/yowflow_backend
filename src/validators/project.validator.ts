@@ -233,6 +233,36 @@ export const createProjectClientAssetSchema = projectClientAssetUploadIntentSche
 });
 export const updateProjectClientAssetSchema = z.object({ category: z.string().trim().max(80).optional(), title: z.string().trim().max(255).optional(), notes: z.string().max(2000).optional() });
 
+// --- Gallery media ----------------------------------------------------------
+// Wedding deliveries are photographs and films, so the accepted types and the
+// size ceiling are both wider than the client-document vault's.
+export const galleryMediaParams = z.object({ id: uuid, mediaId: uuid });
+export const galleryUploadIntentSchema = z.object({
+  originalName: z.string().trim().min(1).max(255),
+  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'video/mp4', 'video/quicktime', 'video/webm']),
+});
+export const shareLinkParams = z.object({ id: uuid, linkId: uuid });
+export const createShareLinkSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  accessType: z.enum(['VIEW_ONLY', 'VIEW_DOWNLOAD', 'SELECTED_ONLY', 'SECTION_ONLY', 'FULL_GALLERY']),
+  sectionId: uuid.optional(),
+  mediaIds: z.array(uuid).max(500).optional(),
+  // A share password is a convenience for the couple, not an account, so it is
+  // held to a length rather than the staff password policy.
+  password: z.string().min(4).max(128).optional(),
+  expiresAt: z.string().datetime().optional(),
+  watermarkEnabled: z.boolean().optional(),
+});
+export const sharedGalleryQuery = z.object({ password: z.string().max(128).optional() });
+
+export const addGalleryMediaSchema = galleryUploadIntentSchema.extend({
+  bucket: z.string().trim().min(1).max(120),
+  objectKey: z.string().trim().min(1).max(512),
+  sizeBytes: z.coerce.number().int().min(1).max(50 * 1024 * 1024),
+  title: z.string().trim().max(255).optional(),
+  sectionName: z.string().trim().max(160).optional(),
+});
+
 // --- Events ---------------------------------------------------------------
 
 export const EVENT_STATUS = z.enum(['PLANNED', 'CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']);

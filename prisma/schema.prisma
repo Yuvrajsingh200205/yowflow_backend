@@ -463,6 +463,112 @@ enum WorkSessionStatus {
   COMPLETED
 }
 
+// --- Client portal & wedding galleries -------------------------------------
+
+enum GalleryStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum GallerySectionStatus {
+  UPCOMING
+  SHOOT_COMPLETED
+  EDITING
+  PREVIEW_READY
+  GALLERY_READY
+  DELIVERED
+}
+
+enum GalleryMediaType {
+  IMAGE
+  VIDEO
+  DOCUMENT
+}
+
+enum GalleryMediaCategory {
+  PHOTOS
+  VIDEOS
+  REELS
+  HIGHLIGHTS
+  DOCUMENTS
+}
+
+enum GalleryMediaOrientation {
+  LANDSCAPE
+  PORTRAIT
+  SQUARE
+}
+
+enum GalleryDerivativeKind {
+  THUMBNAIL
+  PREVIEW
+  WATERMARKED
+  HIGH_RES
+}
+
+enum GallerySelectionKind {
+  FAVORITE
+  ALBUM
+}
+
+enum GalleryShareAccess {
+  VIEW_ONLY
+  VIEW_DOWNLOAD
+  SELECTED_ONLY
+  SECTION_ONLY
+  FULL_GALLERY
+}
+
+enum GalleryShareStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+enum ClientPortalUserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+enum ClientPortalCommentType {
+  GENERAL
+  RETOUCH_REQUEST
+  ALBUM_COVER
+  REMOVE_REQUEST
+}
+
+enum ClientPortalRequestType {
+  PHOTO_RETOUCH
+  VIDEO_CHANGE
+  ALBUM_CHANGE
+  SONG_CHANGE
+  NAME_CORRECTION
+  DELIVERY_REQUEST
+  OTHER
+}
+
+enum ClientPortalRequestStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_CLIENT
+  COMPLETED
+  CLOSED
+}
+
+enum ClientPortalNotificationType {
+  GALLERY_READY
+  SECTION_UPLOADED
+  VIDEO_READY
+  PAYMENT_DUE
+  PAYMENT_RECEIVED
+  ALBUM_ACTION
+  REQUEST_UPDATE
+  DOCUMENT_NEW
+  GENERAL
+}
+
 // ===========================================================================
 // TENANCY — Organization > Branch > Users > CRM data
 // ===========================================================================
@@ -533,6 +639,16 @@ model Organization {
   // Settings workspace (additive — a back-relation declares no column here).
   organizationSetting  OrganizationSetting?
   moduleAccessRequests ModuleAccessRequest[]
+
+  clientPortalUsers      ClientPortalUser[]
+  galleries              Gallery[]
+  gallerySections        GallerySection[]
+  gallerySubFolders      GallerySubFolder[]
+  galleryMedia           GalleryMedia[]
+  galleryMediaSelections GalleryMediaSelection[]
+  galleryShareLinks      GalleryShareLink[]
+  clientPortalComments   ClientPortalComment[]
+  clientPortalRequests   ClientPortalRequest[]
 
   @@index([status])
   @@map("organizations")
@@ -658,6 +774,11 @@ model User {
   userSetting          UserSetting?
   moduleAccessRequests ModuleAccessRequest[] @relation("ModuleAccessRequester")
   moduleAccessReviews  ModuleAccessRequest[] @relation("ModuleAccessReviewer")
+
+  galleryShareLinksCreated GalleryShareLink[]    @relation("GalleryShareCreatedBy")
+  portalCommentsAuthored   ClientPortalComment[] @relation("PortalCommentAuthor")
+  portalCommentsResolved   ClientPortalComment[] @relation("PortalCommentResolver")
+  portalRequestsAssigned   ClientPortalRequest[] @relation("PortalRequestAssignee")
 
   @@unique([organizationId, email])
   @@unique([organizationId, employeeCode])
@@ -1023,6 +1144,8 @@ model Client {
   deliveries     Delivery[]
   tasks          Task[]
 
+  portalUsers    ClientPortalUser[]
+
   @@unique([organizationId, clientCode])
   @@index([organizationId, isActive])
   @@index([organizationId, displayName])
@@ -1162,6 +1285,10 @@ model Project {
   paymentMilestones PaymentMilestone[]
   freelancerConnections FreelancerConnection[]
 
+  gallery               Gallery?
+  clientPortalRequests  ClientPortalRequest[]
+  clientPortalNotifications ClientPortalNotification[]
+
   @@unique([organizationId, projectNumber])
   @@index([organizationId, status])
   @@index([organizationId, weddingDate])
@@ -1258,6 +1385,8 @@ model Event {
   shoots     Shoot[]
   tasks      Task[]
   deliveries Delivery[]
+
+  gallerySections GallerySection[]
 
   @@index([projectId, eventDate])
   @@index([organizationId, eventDate])
@@ -2302,6 +2431,13 @@ model FileObject {
   expenseAttachments ExpenseAttachment[]
   freelancerPortfolioItems FreelancerPortfolioItem[]
 
+  clientPortalUserAvatars  ClientPortalUser[]       @relation("ClientPortalUserAvatar")
+  galleryCovers            Gallery[]                @relation("GalleryCover")
+  gallerySectionCovers     GallerySection[]         @relation("GallerySectionCover")
+  gallerySubFolderCovers   GallerySubFolder[]       @relation("GallerySubFolderCover")
+  galleryMedia             GalleryMedia[]           @relation("GalleryMediaFile")
+  galleryDerivatives       GalleryMediaDerivative[] @relation("GalleryDerivativeFile")
+
   @@unique([bucket, objectKey])
   @@index([entityType, entityId])
   @@index([organizationId, createdAt])
@@ -2481,4 +2617,402 @@ model ModuleAccessRequest {
   @@index([employeeId, status])
   @@index([reviewedById])
   @@map("module_access_requests")
+}
+
+// ===========================================================================
+// CLIENT PORTAL & WEDDING GALLERIES
+//
+// The couple-facing side of a project. PostgreSQL holds only the structure and
+// the decisions — every photograph and film lives with the storage provider and
+// is reached through `FileObject` (§22), because a wedding delivery runs to tens
+// of gigabytes and must never sit in a `bytea` column.
+//
+// Portal identities are deliberately separate from `User` (studio staff) and
+// from `Freelancer`. A couple signing in must never traverse CRM authorisation.
+// ===========================================================================
+
+/// A couple's login for the portal. Scoped to one CRM client, so a repeat
+/// client reaches every wedding they have booked with one account.
+model ClientPortalUser {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  organizationId      String                 @map("organization_id") @db.Uuid
+  clientId            String                 @map("client_id") @db.Uuid
+  email               String                 @db.VarChar(160)
+  fullName            String                 @map("full_name") @db.VarChar(160)
+  phone               String?                @db.VarChar(32)
+  passwordHash        String?                @map("password_hash") @db.VarChar(255)
+  avatarFileId        String?                @map("avatar_file_id") @db.Uuid
+  status              ClientPortalUserStatus @default(INVITED)
+  failedLoginAttempts Int                    @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime?              @map("locked_until") @db.Timestamptz(6)
+  lastLoginAt         DateTime?              @map("last_login_at") @db.Timestamptz(6)
+  invitedAt           DateTime?              @map("invited_at") @db.Timestamptz(6)
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime?              @map("deleted_at") @db.Timestamptz(6)
+  deletedBy           String?                @map("deleted_by") @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  avatarFile   FileObject?  @relation("ClientPortalUserAvatar", fields: [avatarFileId], references: [id], onDelete: SetNull)
+
+  sessions      ClientPortalSession[]
+  selections    GalleryMediaSelection[]
+  comments      ClientPortalComment[]
+  requests      ClientPortalRequest[]
+  notifications ClientPortalNotification[]
+
+  @@unique([organizationId, email])
+  @@index([clientId, status])
+  @@map("client_portal_users")
+}
+
+/// Refresh-token sessions for the portal, mirroring `FreelancerSession`. Only
+/// the hash is stored, and revocation is explicit rather than by deletion.
+model ClientPortalSession {
+  id               String        @id @default(uuid()) @db.Uuid
+  portalUserId     String        @map("portal_user_id") @db.Uuid
+  refreshTokenHash String        @unique @map("refresh_token_hash") @db.VarChar(64)
+  status           SessionStatus @default(ACTIVE)
+  ipAddress        String?       @map("ip_address") @db.Inet
+  userAgent        String?       @map("user_agent") @db.VarChar(512)
+  issuedAt         DateTime      @default(now()) @map("issued_at") @db.Timestamptz(6)
+  lastUsedAt       DateTime      @default(now()) @map("last_used_at") @db.Timestamptz(6)
+  expiresAt        DateTime      @map("expires_at") @db.Timestamptz(6)
+  revokedAt        DateTime?     @map("revoked_at") @db.Timestamptz(6)
+  revokeReason     LogoutReason? @map("revoke_reason")
+
+  portalUser ClientPortalUser @relation(fields: [portalUserId], references: [id], onDelete: Cascade)
+
+  @@index([portalUserId, status])
+  @@index([expiresAt])
+  @@map("client_portal_sessions")
+}
+
+/// One gallery per project — the couple's whole wedding collection.
+model Gallery {
+  id                    String        @id @default(uuid()) @db.Uuid
+  organizationId        String        @map("organization_id") @db.Uuid
+  projectId             String        @unique @map("project_id") @db.Uuid
+  title                 String        @db.VarChar(200)
+  welcomeMessage        String?       @map("welcome_message") @db.Text
+  coverFileId           String?       @map("cover_file_id") @db.Uuid
+  status                GalleryStatus @default(DRAFT)
+  /// How many photographs the couple must choose for their album.
+  albumSelectionTarget  Int           @default(60) @map("album_selection_target")
+  expectedDeliveryDate  DateTime?     @map("expected_delivery_date") @db.Date
+  publishedAt           DateTime?     @map("published_at") @db.Timestamptz(6)
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt             DateTime?     @map("deleted_at") @db.Timestamptz(6)
+  deletedBy             String?       @map("deleted_by") @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  coverFile    FileObject?  @relation("GalleryCover", fields: [coverFileId], references: [id], onDelete: SetNull)
+
+  sections   GallerySection[]
+  subFolders GallerySubFolder[]
+  media      GalleryMedia[]
+  shareLinks GalleryShareLink[]
+  comments   ClientPortalComment[]
+  requests   ClientPortalRequest[]
+
+  @@index([organizationId, status])
+  @@map("galleries")
+}
+
+/// A client-facing folder for one ceremony. Linked to the CRM `Event` where one
+/// exists, so the studio never maintains the wedding calendar twice.
+model GallerySection {
+  id                   String               @id @default(uuid()) @db.Uuid
+  organizationId       String               @map("organization_id") @db.Uuid
+  galleryId            String               @map("gallery_id") @db.Uuid
+  eventId              String?              @map("event_id") @db.Uuid
+  name                 String               @db.VarChar(160)
+  description          String?              @db.Text
+  sectionDate          DateTime?            @map("section_date") @db.Date
+  venueName            String?              @map("venue_name") @db.VarChar(200)
+  coverFileId          String?              @map("cover_file_id") @db.Uuid
+  status               GallerySectionStatus @default(UPCOMING)
+  leadPhotographer     String?              @map("lead_photographer") @db.VarChar(160)
+  cinematographer      String?              @db.VarChar(160)
+  /// Studio-controlled gates. Every one is enforced server side — a section the
+  /// couple may not see is never serialised to them.
+  isVisibleToClient    Boolean              @default(false) @map("is_visible_to_client")
+  isDownloadAllowed    Boolean              @default(false) @map("is_download_allowed")
+  isShareAllowed       Boolean              @default(false) @map("is_share_allowed")
+  isFaceSearchAllowed  Boolean              @default(false) @map("is_face_search_allowed")
+  hasWatermark         Boolean              @default(true) @map("has_watermark")
+  expectedDeliveryDate DateTime?            @map("expected_delivery_date") @db.Date
+  orderIndex           Int                  @default(0) @map("order_index")
+  createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt            DateTime?            @map("deleted_at") @db.Timestamptz(6)
+  deletedBy            String?              @map("deleted_by") @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  gallery      Gallery      @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  event        Event?       @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  coverFile    FileObject?  @relation("GallerySectionCover", fields: [coverFileId], references: [id], onDelete: SetNull)
+
+  subFolders GallerySubFolder[]
+  media      GalleryMedia[]
+  shareLinks GalleryShareLink[]
+
+  @@index([galleryId, orderIndex])
+  @@index([galleryId, isVisibleToClient])
+  @@index([eventId])
+  @@map("gallery_sections")
+}
+
+/// A category inside a ceremony — "Varmala & Pheras", "Candid Moments".
+model GallerySubFolder {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  galleryId       String    @map("gallery_id") @db.Uuid
+  sectionId       String    @map("section_id") @db.Uuid
+  name            String    @db.VarChar(160)
+  description     String?   @db.Text
+  coverFileId     String?   @map("cover_file_id") @db.Uuid
+  /// Accent token from the design system, not a raw colour.
+  colorToken      String?   @map("color_token") @db.VarChar(32)
+  isClientVisible Boolean   @default(true) @map("is_client_visible")
+  orderIndex      Int       @default(0) @map("order_index")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedBy       String?   @map("deleted_by") @db.Uuid
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  gallery      Gallery        @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  section      GallerySection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  coverFile    FileObject?    @relation("GallerySubFolderCover", fields: [coverFileId], references: [id], onDelete: SetNull)
+
+  media GalleryMedia[]
+
+  @@unique([sectionId, name])
+  @@index([galleryId, orderIndex])
+  @@map("gallery_sub_folders")
+}
+
+/// One photograph or film in a gallery. The bytes live in `FileObject`; this
+/// row carries only what the portal needs to present and gate it.
+model GalleryMedia {
+  id                String                   @id @default(uuid()) @db.Uuid
+  organizationId    String                   @map("organization_id") @db.Uuid
+  galleryId         String                   @map("gallery_id") @db.Uuid
+  sectionId         String                   @map("section_id") @db.Uuid
+  subFolderId       String?                  @map("sub_folder_id") @db.Uuid
+  fileId            String                   @unique @map("file_id") @db.Uuid
+  title             String                   @db.VarChar(255)
+  mediaType         GalleryMediaType         @map("media_type")
+  category          GalleryMediaCategory     @default(PHOTOS)
+  width             Int?
+  height            Int?
+  orientation       GalleryMediaOrientation?
+  /// Films only, in whole seconds.
+  durationSeconds   Int?                     @map("duration_seconds")
+  capturedAt        DateTime?                @map("captured_at") @db.Timestamptz(6)
+  tags              String[]                 @default([])
+  photographerCredit String?                 @map("photographer_credit") @db.VarChar(200)
+  isClientVisible   Boolean                  @default(true) @map("is_client_visible")
+  isDownloadAllowed Boolean                  @default(true) @map("is_download_allowed")
+  orderIndex        Int                      @default(0) @map("order_index")
+  viewCount         Int                      @default(0) @map("view_count")
+  downloadCount     Int                      @default(0) @map("download_count")
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime?                @map("deleted_at") @db.Timestamptz(6)
+  deletedBy         String?                  @map("deleted_by") @db.Uuid
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  gallery      Gallery           @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  section      GallerySection    @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subFolder    GallerySubFolder? @relation(fields: [subFolderId], references: [id], onDelete: SetNull)
+  file         FileObject        @relation("GalleryMediaFile", fields: [fileId], references: [id], onDelete: Cascade)
+
+  derivatives GalleryMediaDerivative[]
+  selections  GalleryMediaSelection[]
+  comments    ClientPortalComment[]
+  requests    ClientPortalRequest[]
+  shareLinks  GalleryShareLinkMedia[]
+
+  @@index([galleryId, orderIndex])
+  @@index([sectionId, isClientVisible])
+  @@index([subFolderId])
+  @@map("gallery_media")
+}
+
+/// Generated renditions — thumbnail, preview, watermarked, high-resolution.
+/// Produced outside the request path; the original is never served directly.
+model GalleryMediaDerivative {
+  id        String                @id @default(uuid()) @db.Uuid
+  mediaId   String                @map("media_id") @db.Uuid
+  kind      GalleryDerivativeKind
+  fileId    String                @map("file_id") @db.Uuid
+  width     Int?
+  height    Int?
+  createdAt DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  media GalleryMedia @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  file  FileObject   @relation("GalleryDerivativeFile", fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([mediaId, kind])
+  @@index([fileId])
+  @@map("gallery_media_derivatives")
+}
+
+/// A favourite or an album pick, recorded per portal user. Selections are rows
+/// rather than flags on the media, because a couple and their families all
+/// choose from the same gallery and must not overwrite one another.
+model GalleryMediaSelection {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  mediaId        String               @map("media_id") @db.Uuid
+  portalUserId   String               @map("portal_user_id") @db.Uuid
+  kind           GallerySelectionKind
+  note           String?              @db.Text
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  media        GalleryMedia     @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  portalUser   ClientPortalUser @relation(fields: [portalUserId], references: [id], onDelete: Cascade)
+
+  @@unique([mediaId, portalUserId, kind])
+  @@index([portalUserId, kind])
+  @@map("gallery_media_selections")
+}
+
+/// A shareable link the couple hands to family. Passwords are hashed, never
+/// stored in the clear, and revocation is explicit so a link can be killed.
+model GalleryShareLink {
+  id               String             @id @default(uuid()) @db.Uuid
+  organizationId   String             @map("organization_id") @db.Uuid
+  galleryId        String             @map("gallery_id") @db.Uuid
+  sectionId        String?            @map("section_id") @db.Uuid
+  token            String             @unique @db.VarChar(64)
+  title            String             @db.VarChar(200)
+  accessType       GalleryShareAccess @default(VIEW_ONLY) @map("access_type")
+  passwordHash     String?            @map("password_hash") @db.VarChar(255)
+  watermarkEnabled Boolean            @default(true) @map("watermark_enabled")
+  status           GalleryShareStatus @default(ACTIVE)
+  expiresAt        DateTime?          @map("expires_at") @db.Timestamptz(6)
+  viewsCount       Int                @default(0) @map("views_count")
+  downloadsCount   Int                @default(0) @map("downloads_count")
+  createdById      String?            @map("created_by_id") @db.Uuid
+  createdByPortalUserId String?       @map("created_by_portal_user_id") @db.Uuid
+  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  revokedAt        DateTime?          @map("revoked_at") @db.Timestamptz(6)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  gallery      Gallery         @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  section      GallerySection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  createdBy    User?           @relation("GalleryShareCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  media GalleryShareLinkMedia[]
+
+  @@index([galleryId, status])
+  @@index([expiresAt])
+  @@map("gallery_share_links")
+}
+
+/// The explicit photo set behind a SELECTED_ONLY share. Relational rather than
+/// a JSON array of ids, so the set stays joinable and referentially sound (§5).
+model GalleryShareLinkMedia {
+  shareLinkId String @map("share_link_id") @db.Uuid
+  mediaId     String @map("media_id") @db.Uuid
+
+  shareLink GalleryShareLink @relation(fields: [shareLinkId], references: [id], onDelete: Cascade)
+  media     GalleryMedia     @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([shareLinkId, mediaId])
+  @@index([mediaId])
+  @@map("gallery_share_link_media")
+}
+
+/// A note on a photograph. Written either by the couple or by the studio —
+/// exactly one author, enforced by CHECK in the migration.
+model ClientPortalComment {
+  id             String                  @id @default(uuid()) @db.Uuid
+  organizationId String                  @map("organization_id") @db.Uuid
+  galleryId      String                  @map("gallery_id") @db.Uuid
+  mediaId        String?                 @map("media_id") @db.Uuid
+  portalUserId   String?                 @map("portal_user_id") @db.Uuid
+  authorUserId   String?                 @map("author_user_id") @db.Uuid
+  type           ClientPortalCommentType @default(GENERAL)
+  body           String                  @db.Text
+  isResolved     Boolean                 @default(false) @map("is_resolved")
+  resolvedAt     DateTime?               @map("resolved_at") @db.Timestamptz(6)
+  resolvedById   String?                 @map("resolved_by_id") @db.Uuid
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?               @map("deleted_at") @db.Timestamptz(6)
+  deletedBy      String?                 @map("deleted_by") @db.Uuid
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  gallery      Gallery           @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  media        GalleryMedia?     @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  portalUser   ClientPortalUser? @relation(fields: [portalUserId], references: [id], onDelete: SetNull)
+  authorUser   User?             @relation("PortalCommentAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  resolvedBy   User?             @relation("PortalCommentResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([galleryId, isResolved, createdAt])
+  @@index([mediaId])
+  @@map("client_portal_comments")
+}
+
+/// A change the couple has asked for — a retouch, a song swap, a reprint.
+model ClientPortalRequest {
+  id             String                    @id @default(uuid()) @db.Uuid
+  organizationId String                    @map("organization_id") @db.Uuid
+  galleryId      String                    @map("gallery_id") @db.Uuid
+  projectId      String                    @map("project_id") @db.Uuid
+  portalUserId   String                    @map("portal_user_id") @db.Uuid
+  relatedMediaId String?                   @map("related_media_id") @db.Uuid
+  type           ClientPortalRequestType   @default(OTHER)
+  status         ClientPortalRequestStatus @default(OPEN)
+  title          String                    @db.VarChar(200)
+  description    String                    @db.Text
+  adminResponse  String?                   @map("admin_response") @db.Text
+  assignedToId   String?                   @map("assigned_to_id") @db.Uuid
+  resolvedAt     DateTime?                 @map("resolved_at") @db.Timestamptz(6)
+  createdAt      DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?                 @map("deleted_at") @db.Timestamptz(6)
+  deletedBy      String?                   @map("deleted_by") @db.Uuid
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  gallery      Gallery          @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  portalUser   ClientPortalUser @relation(fields: [portalUserId], references: [id], onDelete: Cascade)
+  relatedMedia GalleryMedia?    @relation(fields: [relatedMediaId], references: [id], onDelete: SetNull)
+  assignedTo   User?            @relation("PortalRequestAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, createdAt])
+  @@index([galleryId, status])
+  @@index([assignedToId])
+  @@map("client_portal_requests")
+}
+
+/// Portal-side timeline entries. Studio-authored, read by the couple.
+model ClientPortalNotification {
+  id           String                       @id @default(uuid()) @db.Uuid
+  portalUserId String                       @map("portal_user_id") @db.Uuid
+  projectId    String?                      @map("project_id") @db.Uuid
+  type         ClientPortalNotificationType @default(GENERAL)
+  title        String                       @db.VarChar(200)
+  message      String                       @db.Text
+  actionPath   String?                      @map("action_path") @db.VarChar(255)
+  actionLabel  String?                      @map("action_label") @db.VarChar(80)
+  isRead       Boolean                      @default(false) @map("is_read")
+  readAt       DateTime?                    @map("read_at") @db.Timestamptz(6)
+  createdAt    DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  portalUser ClientPortalUser @relation(fields: [portalUserId], references: [id], onDelete: Cascade)
+  project    Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([portalUserId, isRead, createdAt])
+  @@map("client_portal_notifications")
 }

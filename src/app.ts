@@ -155,7 +155,10 @@ export function createApp() {
         if (!file?.content) return res.status(404).end();
         res.type(file.mimeType);
         res.setHeader('Content-Length', file.sizeBytes.toString());
-        return res.send(file.content);
+        // Prisma hands back Bytes as a Uint8Array, and res.send() serialises
+        // that to JSON rather than writing binary — every download came out as
+        // {"0":97,"1":45,...}. Buffer.from gives Express real bytes to send.
+        return res.send(Buffer.from(file.content));
       } catch (error) {
         return next(error);
       }

@@ -104,10 +104,21 @@ if (!parsed.success) {
 }
 
 const raw = parsed.data;
-if (raw.NODE_ENV === 'production' && raw.STORAGE_PROVIDER !== 'DATABASE') {
-  throw new Error('Production document storage requires STORAGE_PROVIDER=DATABASE; LOCAL storage is not persistent on serverless hosts.');
+const PERSISTENT_STORAGE = new Set(['DATABASE', 'S3', 'R2', 'SUPABASE']);
+if (raw.NODE_ENV === 'production' && !PERSISTENT_STORAGE.has(raw.STORAGE_PROVIDER)) {
+  throw new Error('Production document storage requires a persistent STORAGE_PROVIDER (DATABASE, S3, R2 or SUPABASE); LOCAL storage is not persistent on serverless hosts.');
 }
-if (raw.NODE_ENV === 'production' && !raw.STORAGE_PUBLIC_BASE_URL) {
+// The S3-compatible providers sign their own URLs, so they need an endpoint and
+// credentials. Failing at boot beats failing on the first upload.
+if (['S3', 'R2', 'SUPABASE'].includes(raw.STORAGE_PROVIDER)) {
+  const missing = ['STORAGE_ENDPOINT', 'STORAGE_ACCESS_KEY_ID', 'STORAGE_SECRET_ACCESS_KEY'].filter(
+    (key) => !raw[key as keyof typeof raw],
+  );
+  if (missing.length > 0) {
+    throw new Error(`STORAGE_PROVIDER=${raw.STORAGE_PROVIDER} requires ${missing.join(', ')}`);
+  }
+}
+if (raw.NODE_ENV === 'production' && raw.STORAGE_PROVIDER === 'DATABASE' && !raw.STORAGE_PUBLIC_BASE_URL) {
   throw new Error('Production document storage requires STORAGE_PUBLIC_BASE_URL to generate signed file URLs for the deployed backend.');
 }
 if (onVercel && !/sslmode=/i.test(raw.DATABASE_URL)) {

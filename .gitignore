@@ -10,5 +10,7 @@ coverage/
 .env.*
 !.env.example
 
-# Local storage driver output
+# Local storage driver output. These are real client photographs and documents
+# written by STORAGE_PROVIDER=LOCAL — they must never reach the repository.
 uploads/
+.local-storage/

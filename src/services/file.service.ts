@@ -4,7 +4,7 @@ import { andWhere, paginate, searchFilter } from '../repositories/base.repositor
 import { badRequest, forbidden, notFound } from '../utils/errors';
 import { AuthContext } from '../types';
 import { AuditRequestContext, recordAudit } from './audit.service';
-import { buildObjectKey, createSignedUrl, getStorageProvider } from './storage.service';
+import { buildObjectKey, createSignedUrl, createUploadUrl, getStorageProvider } from './storage.service';
 import { env } from '../config/env';
 import { canAccessAllLeads } from './lead.service';
 import { scopedProjectWhere } from './project.service';
@@ -177,7 +177,9 @@ export async function createUploadIntent(
 
   const objectKey = buildObjectKey(auth.organizationId, input.entityType, input.originalName);
   const bucket = env.STORAGE_BUCKET;
-  const signed = createSignedUrl(objectKey, bucket);
+  // A presigned PUT, which is a different signature from the GET used for
+  // downloads on the S3-compatible providers.
+  const signed = createUploadUrl(objectKey, bucket);
 
   // The signed PUT has no authenticated request body. For DATABASE storage,
   // reserve the FileObject first so the PUT can write bytes to this exact,

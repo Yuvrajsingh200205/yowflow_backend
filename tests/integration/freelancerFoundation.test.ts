@@ -151,6 +151,8 @@ describe('freelancer foundation security', () => {
         fullName: 'Public Applicant',
         phone: '9876543212',
         email: 'public.artist@example.com',
+        // Public sign-up sets portal credentials as part of applying.
+        password: 'portal-pass-123',
         status: 'APPROVED',
         reviewedById: org.admin.id,
         freelancerId,
@@ -160,7 +162,10 @@ describe('freelancer foundation security', () => {
     expect(created.body.data.status).toBe('SUBMITTED');
     expect(created.body.data.organizationId).toBe(org.organizationId);
     expect(created.body.data.reviewedById).toBeNull();
-    expect(created.body.data.freelancerId).toBeNull();
+    // Public sign-up provisions its own freelancer record. What must never
+    // happen is the applicant binding their application to somebody else's,
+    // so the supplied freelancerId has to be ignored rather than honoured.
+    expect(created.body.data.freelancerId).not.toBe(freelancerId);
   });
 
   it('creates a hashed single-use onboarding token when an application is approved', async () => {
@@ -398,6 +403,22 @@ describe('freelancer foundation security', () => {
       .send({ freelancerId: freelancer.id, status: 'INTERESTED' })
       .expect(201);
 
+    // Connecting is a two-step consent flow: the first call only asks the
+    // freelancer to approve, and books nothing.
+    const requested = await authed(adminToken)
+      .post(`${base}/freelancers/connections/${connection.body.data.id}/connect`)
+      .send({ projectId, shootId, role: 'CINEMATOGRAPHER' })
+      .expect(200);
+    expect(requested.body.data.connection.status).toBe('CONTACTED');
+    expect(requested.body.data.assignment).toBeNull();
+    expect(await prisma.shootAssignment.count({ where: { freelancerId: freelancer.id, shootId } })).toBe(0);
+
+    // The freelancer accepts, and only then does connecting create the booking.
+    await authed(adminToken)
+      .patch(`${base}/freelancers/connections/${connection.body.data.id}`)
+      .send({ status: 'ACCEPTED' })
+      .expect(200);
+
     const connected = await authed(adminToken)
       .post(`${base}/freelancers/connections/${connection.body.data.id}/connect`)
       .send({ projectId, shootId, role: 'CINEMATOGRAPHER' })
@@ -435,6 +456,13 @@ describe('freelancer foundation security', () => {
       .expect(409);
   });
 
+  /** A connection only books a shoot once the freelancer has accepted it. */
+  const acceptConnection = (connectionId: string) =>
+    authed(adminToken)
+      .patch(`${base}/freelancers/connections/${connectionId}`)
+      .send({ status: 'ACCEPTED' })
+      .expect(200);
+
   it('allows valid assignment combinations without merging connection and assignment lifecycle', async () => {
     const sameFreelancer = await makeSearchableFreelancer({
       organizationId: org.organizationId,
@@ -456,10 +484,12 @@ describe('freelancer foundation security', () => {
       .post(`${base}/freelancers/connections`)
       .send({ freelancerId: sameFreelancer.id, projectId, shootId: secondShoot.body.data.id, status: 'INTERESTED' })
       .expect(201);
+    await acceptConnection(firstConnection.body.data.id);
     await authed(adminToken)
       .post(`${base}/freelancers/connections/${firstConnection.body.data.id}/connect`)
       .send({ projectId, shootId, role: 'LEAD_PHOTOGRAPHER' })
       .expect(200);
+    await acceptConnection(secondConnection.body.data.id);
     await authed(adminToken)
       .post(`${base}/freelancers/connections/${secondConnection.body.data.id}/connect`)
       .send({ projectId, shootId: secondShoot.body.data.id, role: 'LEAD_PHOTOGRAPHER' })
@@ -476,6 +506,7 @@ describe('freelancer foundation security', () => {
       .post(`${base}/freelancers/connections`)
       .send({ freelancerId: otherFreelancer.id, projectId, shootId, status: 'INTERESTED' })
       .expect(201);
+    await acceptConnection(otherConnection.body.data.id);
     await authed(adminToken)
       .post(`${base}/freelancers/connections/${otherConnection.body.data.id}/connect`)
       .send({ projectId, shootId, role: 'DRONE_OPERATOR' })
@@ -556,6 +587,7 @@ describe('freelancer foundation security', () => {
       .post(`${base}/freelancers/connections`)
       .send({ freelancerId: freelancerA.id, projectId, shootId, status: 'INTERESTED' })
       .expect(201);
+    await acceptConnection(connection.body.data.id);
     await authed(adminToken)
       .post(`${base}/freelancers/connections/${connection.body.data.id}/connect`)
       .send({ projectId, shootId, role: 'LEAD_PHOTOGRAPHER' })

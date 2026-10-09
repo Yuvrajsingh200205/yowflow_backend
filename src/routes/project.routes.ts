@@ -24,6 +24,11 @@ import {
   updateShootSchema,
   createProjectClientAssetSchema,
   projectClientAssetParams,
+  addGalleryMediaSchema,
+  galleryMediaParams,
+  galleryUploadIntentSchema,
+  createShareLinkSchema,
+  shareLinkParams,
   projectClientAssetUploadIntentSchema,
   updateProjectClientAssetSchema,
 } from '../validators/project.validator';
@@ -48,6 +53,13 @@ projectRouter.post('/:id/client-assets', requirePermission('FILE_UPLOAD'), valid
 projectRouter.get('/:id/client-assets/:assetId/download-url', requirePermission('FILE_VIEW'), validate({ params: projectClientAssetParams }), controller.clientAssetDownloadUrl);
 projectRouter.patch('/:id/client-assets/:assetId', requirePermission('FILE_UPLOAD'), validate({ params: projectClientAssetParams, body: updateProjectClientAssetSchema }), controller.updateClientAsset);
 projectRouter.delete('/:id/client-assets/:assetId', requirePermission('FILE_DELETE'), validate({ params: projectClientAssetParams }), controller.deleteClientAsset);
+projectRouter.get('/:id/gallery', requirePermission('FILE_VIEW'), validate({ params: idParam }), controller.getGallery);
+projectRouter.post('/:id/gallery/upload-intent', requirePermission('FILE_UPLOAD'), validate({ params: idParam, body: galleryUploadIntentSchema }), controller.createGalleryUploadIntent);
+projectRouter.post('/:id/gallery/media', requirePermission('FILE_UPLOAD'), validate({ params: idParam, body: addGalleryMediaSchema }), controller.addGalleryMedia);
+projectRouter.delete('/:id/gallery/media/:mediaId', requirePermission('FILE_DELETE'), validate({ params: galleryMediaParams }), controller.deleteGalleryMedia);
+projectRouter.get('/:id/gallery/share-links', requirePermission('FILE_VIEW'), validate({ params: idParam }), controller.listShareLinks);
+projectRouter.post('/:id/gallery/share-links', requirePermission('FILE_UPLOAD'), validate({ params: idParam, body: createShareLinkSchema }), controller.createShareLink);
+projectRouter.delete('/:id/gallery/share-links/:linkId', requirePermission('FILE_UPLOAD'), validate({ params: shareLinkParams }), controller.revokeShareLink);
 projectRouter.get(
   '/:id',
   requireAnyPermission('PROJECT_VIEW', 'DATA_MANAGEMENT_VIEW'),

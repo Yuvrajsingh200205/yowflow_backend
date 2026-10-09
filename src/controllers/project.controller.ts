@@ -4,6 +4,7 @@ import * as projectService from '../services/project.service';
 import * as eventService from '../services/event.service';
 import * as shootService from '../services/shoot.service';
 import * as clientAssetService from '../services/projectClientAsset.service';
+import * as galleryMediaService from '../services/galleryMedia.service';
 
 // --- Projects -------------------------------------------------------------
 
@@ -111,6 +112,35 @@ export const createClientAsset = asyncHandler(async (req, res) => {
   const auth = requireAuthContext(req);
   await projectService.assertCanAccessProject(auth, req.params.id);
   return sendCreated(res, await clientAssetService.createProjectClientAsset(auth, req.params.id, req.body, auditContext(req)));
+});
+export const getGallery = asyncHandler(async (req, res) => {
+  const auth = requireAuthContext(req);
+  return sendSuccess(res, await galleryMediaService.getProjectGallery(auth, req.params.id));
+});
+export const createGalleryUploadIntent = asyncHandler(async (req, res) => {
+  const auth = requireAuthContext(req);
+  return sendSuccess(res, await galleryMediaService.createGalleryUploadIntent(auth, req.params.id, req.body));
+});
+export const addGalleryMedia = asyncHandler(async (req, res) => {
+  const auth = requireAuthContext(req);
+  return sendCreated(res, await galleryMediaService.addGalleryMedia(auth, req.params.id, req.body, auditContext(req)));
+});
+export const deleteGalleryMedia = asyncHandler(async (req, res) => {
+  const auth = requireAuthContext(req);
+  await galleryMediaService.deleteGalleryMedia(auth, req.params.id, req.params.mediaId, auditContext(req));
+  return sendSuccess(res, { deleted: true });
+});
+export const listShareLinks = asyncHandler(async (req, res) => {
+  const auth = requireAuthContext(req);
+  return sendSuccess(res, await galleryMediaService.listShareLinks(auth, req.params.id));
+});
+export const createShareLink = asyncHandler(async (req, res) => {
+  const auth = requireAuthContext(req);
+  return sendCreated(res, await galleryMediaService.createShareLink(auth, req.params.id, req.body, auditContext(req)));
+});
+export const revokeShareLink = asyncHandler(async (req, res) => {
+  const auth = requireAuthContext(req);
+  return sendSuccess(res, await galleryMediaService.revokeShareLink(auth, req.params.id, req.params.linkId, auditContext(req)));
 });
 export const updateClientAsset = asyncHandler(async (req, res) => {
   const auth = requireAuthContext(req);
