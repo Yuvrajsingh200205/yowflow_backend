@@ -59,6 +59,15 @@ const schema = z.object({
     .string()
     .default(onVercel ? 'https://wedding-photo-planet.vercel.app' : 'http://localhost:3000,http://localhost:3002'),
 
+  /**
+   * Suffix that Vercel preview deployments for THIS team end with, e.g.
+   * "-acme-projects.vercel.app". Matching on a project-name prefix was unsafe:
+   * *.vercel.app subdomains are first-come-first-served, so anyone could claim
+   * one starting with the project name and be granted credentialed CORS. A team
+   * slug cannot be claimed by an outsider. Empty disables preview matching.
+   */
+  CORS_VERCEL_PREVIEW_SUFFIX: z.string().default(''),
+
   RATE_LIMIT_WINDOW_MS: int(15 * 60 * 1000),
   RATE_LIMIT_MAX: int(300),
   AUTH_RATE_LIMIT_MAX: int(10),
@@ -134,6 +143,7 @@ export const env = {
   corsOrigins: raw.CORS_ORIGIN.split(',')
     .map((o) => o.trim())
     .filter(Boolean),
+  corsVercelPreviewSuffix: raw.CORS_VERCEL_PREVIEW_SUFFIX.trim(),
 };
 
 export type Env = typeof env;

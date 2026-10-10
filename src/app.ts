@@ -57,13 +57,20 @@ export function createApp() {
 
   // Strict allowlist — an unknown Origin is rejected rather than reflected (§38).
   const corsOrigins = env.corsOrigins.map((origin) => origin.replace(/\/$/, ''));
-  const vercelFrontend = /^https:\/\/wedding-photo-planet([a-z0-9-]+)?\.vercel\.app$/i;
+  // Preview deployments are matched on the team-scoped suffix only. A regex on
+  // the project-name prefix let anyone register wedding-photo-planet-<x>.vercel.app
+  // and receive credentialed cross-origin access.
+  const previewSuffix = env.corsVercelPreviewSuffix.toLowerCase();
+  const isTeamPreview = (origin: string) =>
+    previewSuffix.length > 0 &&
+    origin.toLowerCase().startsWith('https://') &&
+    origin.toLowerCase().endsWith(previewSuffix);
   app.use(
     cors({
       origin(origin, callback) {
         if (!origin) return callback(null, true);
         const normalized = origin.replace(/\/$/, '');
-        if (corsOrigins.includes(normalized) || vercelFrontend.test(normalized)) {
+        if (corsOrigins.includes(normalized) || isTeamPreview(normalized)) {
           return callback(null, true);
         }
         return callback(null, false);
