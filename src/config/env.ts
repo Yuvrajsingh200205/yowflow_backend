@@ -104,6 +104,10 @@ const schema = z.object({
   SMTP_SECURE: bool('false'),
   MAIL_FROM: z.string().default('Yowflow <no-reply@yowflow.com>'),
 
+  // Billing (Razorpay). Use rzp_test_ keys for test mode. Unset = billing disabled.
+  RAZORPAY_KEY_ID: z.string().optional(),
+  RAZORPAY_KEY_SECRET: z.string().optional(),
+
   // White-label identity. Change these (not the code) to resell under another name.
   BRAND_NAME: z.string().min(1).default('Yowflow'),
   BRAND_COOKIE_PREFIX: z.string().regex(/^[a-z][a-z0-9]{0,15}$/).default('yf'),

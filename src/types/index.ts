@@ -22,6 +22,7 @@ export interface AuthContext {
     roles: string[];
     permissions: string[];
     organization: { id: string; name: string; slug: string; currency: string; timezone: string };
+    emailVerified?: boolean;
     freelancerProfile: { id: string; status: string } | null;
   };
 }

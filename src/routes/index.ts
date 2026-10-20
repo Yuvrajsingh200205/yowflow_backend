@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import { sharedGalleryRouter } from './sharedGallery.routes';
 import authRoutes from './auth.routes';
 import publicRoutes from './public.routes';
+import { apiKeyRouter, billingRouter } from './billing.routes';
 import freelancerPortalRoutes from './freelancerPortal.routes';
 import { metaIntegrationRouter } from './integration.routes';
 import { clientRouter, leadRouter } from './crm.routes';
@@ -41,6 +42,8 @@ router.use('/shared-galleries', sharedGalleryRouter);
 router.use(requireAuth);
 
 router.use('/dashboard', dashboardRouter);
+router.use('/billing', billingRouter);
+router.use('/settings/api-keys', apiKeyRouter);
 
 router.use('/organizations', organizationRouter);
 router.use('/branches', branchRouter);

@@ -152,6 +152,16 @@ describe('account lifecycle', () => {
     });
   });
 
+  it('exposes emailVerified on /auth/me and flips it after verification', async () => {
+    await api().post(`${base}/auth/signup`).send(signupBody);
+    const token = await login({ email: signupBody.email, password: signupBody.password } as never);
+    const before = await api().get(`${base}/auth/me`).set('Authorization', `Bearer ${token}`);
+    expect(before.body.data.emailVerified).toBe(false);
+    await api().post(`${base}/auth/verify-email`).send({ token: tokenFrom(outbox[0]) });
+    const after = await api().get(`${base}/auth/me`).set('Authorization', `Bearer ${token}`);
+    expect(after.body.data.emailVerified).toBe(true);
+  });
+
   it('keeps tenants isolated: a new studio cannot see another studio’s data', async () => {
     const org = await seedTestOrganization();
     await api().post(`${base}/auth/signup`).send(signupBody);

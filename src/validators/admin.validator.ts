@@ -193,3 +193,21 @@ export const overviewQuery = z.object({
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   limit: z.coerce.number().int().min(1).max(50).optional(),
 });
+
+
+export const createApiKeySchema = z.object({
+  name: z.string().trim().min(2, 'Give the key a name').max(80),
+  scope: z.enum(['READ_ONLY', 'FULL']).default('READ_ONLY'),
+  expiresInDays: z.number().int().min(1).max(730).optional(),
+});
+
+export const checkoutSchema = z.object({
+  plan: z.enum(['starter', 'studio', 'scale']),
+  interval: z.enum(['monthly', 'yearly']),
+});
+
+export const verifyPaymentSchema = z.object({
+  orderId: z.string().min(5).max(80),
+  paymentId: z.string().min(5).max(80),
+  signature: z.string().min(20).max(200),
+});

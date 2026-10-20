@@ -4,6 +4,7 @@ import { verifyAccessToken } from '../utils/jwt';
 import { forbidden, unauthenticated } from '../utils/errors';
 import { TtlCache } from '../utils/cache';
 import { AuthContext } from '../types';
+import crypto from 'crypto';
 import { brand } from '../config/brand';
 
 export const ACCESS_COOKIE = brand.cookie.access;
@@ -32,6 +33,7 @@ interface SessionRow {
   full_name: string;
   employee_code: string | null;
   user_status: string;
+  email_verified_at: Date | null;
   deleted_at: Date | null;
   org_id: string;
   org_name: string;
@@ -70,6 +72,12 @@ export async function requireAuth(
     const token = extractToken(req);
     if (!token) throw unauthenticated('Authentication required');
 
+    if (token.startsWith(API_KEY_PREFIX)) {
+      req.auth = await authenticateApiKey(req, token);
+      next();
+      return;
+    }
+
     const payload = verifyAccessToken(token);
 
     const rows = await prisma.$queryRaw<SessionRow[]>`
@@ -84,6 +92,7 @@ export async function requireAuth(
         u.full_name,
         u.employee_code,
         u.status::text  AS user_status,
+        u.email_verified_at,
         u.deleted_at,
         o.id            AS org_id,
         o.name          AS org_name,
@@ -121,6 +130,17 @@ export async function requireAuth(
     }
     if (row.user_status !== 'ACTIVE') throw forbidden(`Account is ${row.user_status.toLowerCase()}`);
 
+    req.auth = buildAuthContext(row, row.session_id);
+    touchSession(row.session_id);
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+
+function buildAuthContext(row: SessionRow, sessionId: string): AuthContext {
     const roles = row.roles;
     const override = Array.isArray(row.override_permissions) && row.override_permissions.every((key) => typeof key === 'string')
       ? row.override_permissions as string[]
@@ -132,7 +152,7 @@ export async function requireAuth(
       userId: row.user_id,
       organizationId: row.organization_id,
       branchId: row.branch_id,
-      sessionId: row.session_id,
+      sessionId,
       email: row.email,
       fullName: row.full_name,
       roles,
@@ -155,19 +175,14 @@ export async function requireAuth(
           currency: row.org_currency,
           timezone: row.org_timezone,
         },
+        emailVerified: row.email_verified_at !== null,
         freelancerProfile: row.freelancer_id
           ? { id: row.freelancer_id, status: row.freelancer_status ?? 'ACTIVE' }
           : null,
       },
     };
 
-    req.auth = auth;
-    touchSession(row.session_id);
-
-    next();
-  } catch (error) {
-    next(error);
-  }
+  return auth;
 }
 
 function touchSession(sessionId: string): void {
@@ -189,4 +204,67 @@ export async function optionalAuth(
     return;
   }
   await requireAuth(req, res, (err?: unknown) => next(err instanceof Error ? undefined : err));
+}
+
+
+export const API_KEY_PREFIX = 'yfk_';
+const apiKeyTouchCache = new TtlCache<true>(60_000, 500);
+
+/** Endpoints an API key may never call: credential, key-management and billing surfaces. */
+const API_KEY_FORBIDDEN = [/\/auth(\/|$)/, /\/settings\/api-keys/, /\/billing(\/|$)/, /\/settings\/password/];
+
+async function authenticateApiKey(req: Request, token: string): Promise<AuthContext> {
+  const keyHash = crypto.createHash('sha256').update(token).digest('hex');
+  const key = await prisma.apiKey.findUnique({ where: { keyHash } });
+  if (!key || key.revokedAt || (key.expiresAt && key.expiresAt <= new Date())) {
+    throw unauthenticated('API key is invalid, expired or revoked');
+  }
+  if (API_KEY_FORBIDDEN.some((re) => re.test(req.originalUrl))) throw forbidden('API keys cannot access this endpoint');
+  if (key.scope === 'READ_ONLY' && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    throw forbidden('This API key is read-only');
+  }
+
+  const rows = await prisma.$queryRaw<SessionRow[]>`
+    SELECT
+      ${`api-key:${key.id}`}::text AS session_id,
+      'ACTIVE'::text  AS session_status,
+      now() + interval '1 minute' AS expires_at,
+      u.id            AS user_id,
+      u.organization_id,
+      u.branch_id,
+      u.email,
+      u.full_name,
+      u.employee_code,
+      u.status::text  AS user_status,
+      u.email_verified_at,
+      u.deleted_at,
+      o.id            AS org_id,
+      o.name          AS org_name,
+      o.slug          AS org_slug,
+      o.currency      AS org_currency,
+      o.timezone      AS org_timezone,
+      NULL::uuid      AS freelancer_id,
+      NULL::text      AS freelancer_status,
+      coalesce(array_agg(DISTINCT r.name) FILTER (WHERE r.id IS NOT NULL), '{}') AS roles,
+      coalesce(array_agg(DISTINCT p.key) FILTER (WHERE p.id IS NOT NULL), '{}') AS permissions,
+      max(upo.permission_keys::text)::jsonb AS override_permissions
+    FROM users u
+    JOIN organizations o ON o.id = u.organization_id
+    LEFT JOIN user_roles ur ON ur.user_id = u.id
+    LEFT JOIN roles r ON r.id = ur.role_id AND r.deleted_at IS NULL AND r.status = 'ACTIVE'
+    LEFT JOIN role_permissions rp ON rp.role_id = r.id
+    LEFT JOIN permissions p ON p.id = rp.permission_id
+    LEFT JOIN user_permission_overrides upo ON upo.user_id = u.id AND upo.organization_id = u.organization_id
+    WHERE u.id = ${key.userId}::uuid AND u.organization_id = ${key.organizationId}::uuid
+    GROUP BY u.id, o.id
+  `;
+  const row = rows[0];
+  if (!row || row.deleted_at !== null) throw unauthenticated('The key owner no longer exists');
+  if (row.user_status !== 'ACTIVE') throw forbidden(`Key owner account is ${row.user_status.toLowerCase()}`);
+
+  if (!apiKeyTouchCache.get(key.id)) {
+    apiKeyTouchCache.set(key.id, true);
+    void prisma.apiKey.update({ where: { id: key.id }, data: { lastUsedAt: new Date() } }).catch(() => undefined);
+  }
+  return buildAuthContext(row, `api-key:${key.id}`);
 }

@@ -50,6 +50,11 @@ enum EmailTokenType {
   RESET_PASSWORD
 }
 
+enum ApiKeyScope {
+  READ_ONLY
+  FULL
+}
+
 enum RoleType {
   SYSTEM
   CUSTOM
@@ -579,6 +584,7 @@ enum ClientPortalNotificationType {
 // ===========================================================================
 
 model Organization {
+  apiKeys      ApiKey[]
   id           String             @id @default(uuid()) @db.Uuid
   name         String             @db.VarChar(160)
   slug         String             @unique @db.VarChar(80)
@@ -727,6 +733,7 @@ model User {
   sessions           Session[]
   loginHistories     LoginHistory[]
   emailTokens        EmailToken[]
+  apiKeys            ApiKey[]
 
   createdLeads     Lead[]         @relation("LeadCreatedBy")
   ownedLeads       Lead[]         @relation("LeadOwner")
@@ -3056,4 +3063,27 @@ model ContactMessage {
 
   @@index([createdAt])
   @@map("contact_messages")
+}
+
+
+/// Programmatic access. Only the SHA-256 of the key is stored; the plaintext is
+/// shown once at creation. A key acts as the user who created it.
+model ApiKey {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  userId         String      @map("user_id") @db.Uuid
+  name           String      @db.VarChar(80)
+  prefix         String      @db.VarChar(20)
+  keyHash        String      @unique @map("key_hash") @db.VarChar(64)
+  scope          ApiKeyScope @default(READ_ONLY)
+  lastUsedAt     DateTime?   @map("last_used_at") @db.Timestamptz(6)
+  expiresAt      DateTime?   @map("expires_at") @db.Timestamptz(6)
+  revokedAt      DateTime?   @map("revoked_at") @db.Timestamptz(6)
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("api_keys")
 }
