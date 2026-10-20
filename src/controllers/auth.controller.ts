@@ -3,9 +3,10 @@ import { env } from '../config/env';
 import { ACCESS_COOKIE, REFRESH_COOKIE } from '../middleware/auth';
 import { FREELANCER_ACCESS_COOKIE, FREELANCER_REFRESH_COOKIE } from '../middleware/freelancerAuth';
 import { asyncHandler, auditContext, requireAuthContext } from '../utils/http';
-import { sendSuccess } from '../utils/response';
+import { sendCreated, sendSuccess } from '../utils/response';
 import { unauthenticated } from '../utils/errors';
 import * as authService from '../services/auth.service';
+import * as accountService from '../services/account.service';
 import * as freelancerPortalService from '../services/freelancerPortal.service';
 
 /**
@@ -136,4 +137,34 @@ export const changePassword = asyncHandler(async (req, res) => {
   clearAuthCookies(res);
   void auditContext(req);
   return sendSuccess(res, { passwordChanged: true });
+});
+
+export const signup = asyncHandler(async (req, res) =>
+  sendCreated(res, await accountService.signup(req.body, requestMeta(req))),
+);
+
+export const forgotPassword = asyncHandler(async (req, res) => {
+  await accountService.requestPasswordReset(req.body.email);
+  // Identical response whether or not the address exists.
+  return sendSuccess(res, { sent: true });
+});
+
+export const resetPassword = asyncHandler(async (req, res) => {
+  await accountService.resetPassword(req.body.token, req.body.password, requestMeta(req));
+  clearAuthCookies(res);
+  return sendSuccess(res, { passwordReset: true });
+});
+
+export const verifyEmail = asyncHandler(async (req, res) => {
+  await accountService.verifyEmail(req.body.token);
+  return sendSuccess(res, { verified: true });
+});
+
+export const resendVerification = asyncHandler(async (req, res) =>
+  sendSuccess(res, await accountService.resendVerification(requireAuthContext(req).userId)),
+);
+
+export const contact = asyncHandler(async (req, res) => {
+  await accountService.submitContact(req.body, requestMeta(req));
+  return sendCreated(res, { received: true });
 });

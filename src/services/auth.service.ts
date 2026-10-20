@@ -39,6 +39,7 @@ export interface SessionUser {
   roles: string[];
   permissions: string[];
   organization: { id: string; name: string; slug: string; currency: string; timezone: string };
+  emailVerified: boolean;
   freelancerProfile: { id: string; status: string } | null;
 }
 
@@ -50,6 +51,7 @@ const USER_SELECT = {
   fullName: true,
   employeeCode: true,
   status: true,
+  emailVerifiedAt: true,
   passwordHash: true,
   failedLoginAttempts: true,
   lockedUntil: true,
@@ -120,6 +122,7 @@ function toSessionUser(user: NonNullable<RawUser>): SessionUser {
     status: user.status,
     roles: activeRoles.map((ur) => ur.role.name),
     permissions: [...permissions].sort(),
+    emailVerified: user.emailVerifiedAt !== null,
     organization: user.organization,
     freelancerProfile: user.freelancerProfile &&
       user.freelancerProfile.deletedAt === null &&

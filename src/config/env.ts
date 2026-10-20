@@ -94,6 +94,16 @@ const schema = z.object({
   META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
   META_GRAPH_API_VERSION: z.string().regex(/^v\d+\.\d+$/).default('v26.0'),
 
+  // Public URL of the frontend; used to build links in e-mails.
+  APP_URL: z.string().url().default('http://localhost:3000'),
+  // Outbound mail. Without SMTP_HOST the mailer logs instead of sending (development only).
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: int(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_SECURE: bool('false'),
+  MAIL_FROM: z.string().default('Yowflow <no-reply@yowflow.com>'),
+
   // White-label identity. Change these (not the code) to resell under another name.
   BRAND_NAME: z.string().min(1).default('Yowflow'),
   BRAND_COOKIE_PREFIX: z.string().regex(/^[a-z][a-z0-9]{0,15}$/).default('yf'),

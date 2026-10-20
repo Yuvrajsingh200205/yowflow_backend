@@ -45,6 +45,11 @@ enum UserStatus {
   DISABLED
 }
 
+enum EmailTokenType {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
 enum RoleType {
   SYSTEM
   CUSTOM
@@ -701,6 +706,7 @@ model User {
   avatarFileId        String?    @map("avatar_file_id") @db.Uuid
   lastLoginAt         DateTime?  @map("last_login_at") @db.Timestamptz(6)
   passwordChangedAt   DateTime?  @map("password_changed_at") @db.Timestamptz(6)
+  emailVerifiedAt     DateTime?  @map("email_verified_at") @db.Timestamptz(6)
   failedLoginAttempts Int        @default(0) @map("failed_login_attempts")
   lockedUntil         DateTime?  @map("locked_until") @db.Timestamptz(6)
   createdAt           DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -720,6 +726,7 @@ model User {
   rolesAssignedByMe  UserRole[]     @relation("UserRoleAssignedBy")
   sessions           Session[]
   loginHistories     LoginHistory[]
+  emailTokens        EmailToken[]
 
   createdLeads     Lead[]         @relation("LeadCreatedBy")
   ownedLeads       Lead[]         @relation("LeadOwner")
@@ -3015,4 +3022,38 @@ model ClientPortalNotification {
 
   @@index([portalUserId, isRead, createdAt])
   @@map("client_portal_notifications")
+}
+
+
+/// One-time tokens for e-mail verification and password reset. Only the SHA-256
+/// of the token is stored, so a database leak cannot be replayed.
+model EmailToken {
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  type      EmailTokenType
+  tokenHash String         @unique @map("token_hash") @db.VarChar(64)
+  expiresAt DateTime       @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime?      @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("email_tokens")
+}
+
+/// Messages submitted through the public marketing contact form.
+model ContactMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(120)
+  email     String   @db.VarChar(160)
+  company   String?  @db.VarChar(160)
+  phone     String?  @db.VarChar(32)
+  message   String   @db.VarChar(4000)
+  source    String?  @db.VarChar(60)
+  ipHash    String?  @map("ip_hash") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt])
+  @@map("contact_messages")
 }

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { sharedGalleryRouter } from './sharedGallery.routes';
 import authRoutes from './auth.routes';
+import publicRoutes from './public.routes';
 import freelancerPortalRoutes from './freelancerPortal.routes';
 import { metaIntegrationRouter } from './integration.routes';
 import { clientRouter, leadRouter } from './crm.routes';
@@ -29,6 +30,7 @@ const router = Router();
 
 // Public (rate-limited) authentication surface.
 router.use('/auth', authRoutes);
+router.use('/public', publicRoutes);
 router.use('/freelancer-portal', freelancerPortalRoutes);
 router.use('/integrations/meta', metaIntegrationRouter);
 // Public: the share token is the credential, so this sits before requireAuth.

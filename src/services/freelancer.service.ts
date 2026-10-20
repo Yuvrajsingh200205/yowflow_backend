@@ -473,6 +473,15 @@ function searchableFreelancerWhere(organizationId: string, now = new Date()): Pr
     status: 'ACTIVE',
     fullName: { not: '' },
     phone: { not: '' },
+    // Discoverability is the paid freelancer feature: an approved application and a live subscription.
+    applications: { some: { status: 'APPROVED' } },
+    subscriptions: {
+      some: {
+        status: { in: SEARCHABLE_SUBSCRIPTION_STATUSES },
+        OR: [{ currentPeriodEnd: null }, { currentPeriodEnd: { gte: now } }],
+        canceledAt: null,
+      },
+    },
   };
 }
 

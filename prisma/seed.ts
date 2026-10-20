@@ -9,88 +9,12 @@
  *     NODE_ENV is not production, so a production database can never be
  *     populated with invented projects, payments or clients (§43).
  */
-import { PrismaClient, RoleType } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { env } from '../src/config/env';
 import { hashPassword } from '../src/utils/password';
-import { PERMISSIONS, SYSTEM_ROLES, permissionsForSystemRole } from '../src/types/permissions';
+import { provisionOrganization } from '../src/services/tenant.service';
 
 const prisma = new PrismaClient();
-
-const EVENT_TYPES = [
-  { name: 'Roka', colorHex: '#f59e0b', sortOrder: 1 },
-  { name: 'Engagement', colorHex: '#ec4899', sortOrder: 2 },
-  { name: 'Haldi', colorHex: '#fbbf24', sortOrder: 3 },
-  { name: 'Mehendi', colorHex: '#22c55e', sortOrder: 4 },
-  { name: 'Sangeet', colorHex: '#8b5cf6', sortOrder: 5 },
-  { name: 'Wedding', colorHex: '#ef4444', sortOrder: 6 },
-  { name: 'Reception', colorHex: '#3b82f6', sortOrder: 7 },
-  { name: 'Pre Wedding Shoot', colorHex: '#14b8a6', sortOrder: 8 },
-];
-
-const EXPENSE_CATEGORIES = [
-  { name: 'Crew Payout', description: 'Freelancer and external crew settlements' },
-  { name: 'Travel & Fuel', description: 'Cabs, fuel and outstation travel' },
-  { name: 'Equipment & Repair', description: 'Gear purchase, rental and servicing' },
-  { name: 'Album & Printing', description: 'Album design, printing and framing' },
-  { name: 'Studio Rent', description: 'Premises rent' },
-  { name: 'Utilities', description: 'Electricity, water and internet' },
-  { name: 'Software & Subscriptions', description: 'Editing suites and cloud storage' },
-  { name: 'Marketing & Ads', description: 'Paid campaigns and collateral' },
-  { name: 'Food & Refreshments', description: 'On-shoot and studio catering' },
-  { name: 'Miscellaneous', description: 'Uncategorised studio spend' },
-];
-
-const LEAD_SOURCES = [
-  'Instagram',
-  'Meta Ads',
-  'Google Search',
-  'Referral',
-  'Website',
-  'Walk-in',
-  'WeddingWire',
-  'Other',
-];
-
-const DEPARTMENTS = [
-  'Production',
-  'Post Production',
-  'Management',
-  'Sales & Marketing',
-  'Operations',
-];
-
-const DESIGNATIONS = [
-  'Studio Owner',
-  'Studio Manager',
-  'Lead Photographer',
-  'Cinematographer',
-  'Photo Editor',
-  'Video Editor',
-  'Album Designer',
-  'Account Manager',
-  'Sales Executive',
-];
-
-async function seedPermissions(): Promise<Map<string, string>> {
-  for (const permission of PERMISSIONS) {
-    await prisma.permission.upsert({
-      where: { key: permission.key },
-      create: {
-        key: permission.key,
-        module: permission.module,
-        label: permission.label,
-        isSensitive: permission.isSensitive ?? false,
-      },
-      update: {
-        module: permission.module,
-        label: permission.label,
-        isSensitive: permission.isSensitive ?? false,
-      },
-    });
-  }
-  const rows = await prisma.permission.findMany({ select: { id: true, key: true } });
-  return new Map(rows.map((r) => [r.key, r.id]));
-}
 
 async function main(): Promise<void> {
   if (env.isProduction && env.SEED_DEMO_DATA) {
@@ -99,124 +23,13 @@ async function main(): Promise<void> {
     );
   }
 
-  console.warn('→ seeding permission catalogue');
-  const permissionIds = await seedPermissions();
-  console.warn(`  ${permissionIds.size} permissions`);
-
-  console.warn('→ seeding organization');
-  const organization = await prisma.organization.upsert({
-    where: { slug: env.SEED_ORG_SLUG },
-    create: {
-      name: env.SEED_ORG_NAME,
-      slug: env.SEED_ORG_SLUG,
-      currency: 'INR',
-      timezone: 'Asia/Kolkata',
-      country: 'IN',
-    },
-    update: {},
+  console.warn('→ provisioning organization, roles, reference data and settings');
+  const { organization, branch, roleIds, permissionIds } = await provisionOrganization(prisma, {
+    name: env.SEED_ORG_NAME,
+    slug: env.SEED_ORG_SLUG,
+    reassertRolePermissions: true,
   });
-
-  const branch = await prisma.branch.upsert({
-    where: { organizationId_code: { organizationId: organization.id, code: 'HO' } },
-    create: {
-      organizationId: organization.id,
-      name: 'Head Office',
-      code: 'HO',
-      isHeadOffice: true,
-    },
-    update: {},
-  });
-
-  console.warn('→ seeding system roles');
-  const roleIds = new Map<string, string>();
-  for (const roleName of SYSTEM_ROLES) {
-    const role = await prisma.role.upsert({
-      where: { organizationId_name: { organizationId: organization.id, name: roleName } },
-      create: {
-        organizationId: organization.id,
-        name: roleName,
-        type: RoleType.SYSTEM,
-        description: `System role: ${roleName}`,
-        isDefault: roleName === 'Account Manager',
-      },
-      update: { type: RoleType.SYSTEM },
-    });
-    roleIds.set(roleName, role.id);
-
-    const keys = permissionsForSystemRole(roleName);
-    // Re-assert the bundle so a permission added to the catalogue reaches
-    // existing roles on the next seed run.
-    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
-    await prisma.rolePermission.createMany({
-      data: keys
-        .map((key) => permissionIds.get(key))
-        .filter((id): id is string => Boolean(id))
-        .map((permissionId) => ({ roleId: role.id, permissionId })),
-      skipDuplicates: true,
-    });
-    console.warn(`  ${roleName}: ${keys.length} permissions`);
-  }
-
-  console.warn('→ seeding reference data');
-  for (const name of DEPARTMENTS) {
-    await prisma.department.upsert({
-      where: { organizationId_name: { organizationId: organization.id, name } },
-      create: { organizationId: organization.id, name },
-      update: {},
-    });
-  }
-  for (const title of DESIGNATIONS) {
-    await prisma.designation.upsert({
-      where: { organizationId_title: { organizationId: organization.id, title } },
-      create: { organizationId: organization.id, title },
-      update: {},
-    });
-  }
-  for (const eventType of EVENT_TYPES) {
-    await prisma.eventType.upsert({
-      where: { organizationId_name: { organizationId: organization.id, name: eventType.name } },
-      create: { organizationId: organization.id, ...eventType },
-      update: {},
-    });
-  }
-  for (const category of EXPENSE_CATEGORIES) {
-    await prisma.expenseCategory.upsert({
-      where: { organizationId_name: { organizationId: organization.id, name: category.name } },
-      create: { organizationId: organization.id, ...category },
-      update: {},
-    });
-  }
-  for (const name of LEAD_SOURCES) {
-    await prisma.leadSource.upsert({
-      where: { organizationId_name: { organizationId: organization.id, name } },
-      create: {
-        organizationId: organization.id,
-        name,
-      },
-      update: {},
-    });
-  }
-
-  console.warn('→ seeding system settings');
-  const settings: Array<{ key: string; value: unknown; description: string }> = [
-    { key: 'invoice.default_due_days', value: 15, description: 'Default invoice payment window' },
-    { key: 'quotation.default_validity_days', value: 30, description: 'Default quotation validity' },
-    { key: 'attendance.late_after', value: '09:45', description: 'Time after which a check-in is late' },
-    { key: 'project.auto_number_prefix', value: 'PRJ', description: 'Project number prefix' },
-    { key: 'delivery.default_sla_days', value: 45, description: 'Default delivery SLA from wedding date' },
-  ];
-  for (const setting of settings) {
-    await prisma.systemSetting.upsert({
-      where: { organizationId_key: { organizationId: organization.id, key: setting.key } },
-      create: {
-        organizationId: organization.id,
-        key: setting.key,
-        value: setting.value as never,
-        description: setting.description,
-      },
-      update: {},
-    });
-  }
+  console.warn(`  ${permissionIds.size} permissions · ${roleIds.size} system roles`);
 
   console.warn('→ seeding users');
   const accounts = [
@@ -264,6 +77,7 @@ async function main(): Promise<void> {
             email,
             passwordHash: await hashPassword(account.password),
             status: 'ACTIVE',
+            emailVerifiedAt: new Date(),
             failedLoginAttempts: 0,
             lockedUntil: null,
           },
@@ -278,6 +92,7 @@ async function main(): Promise<void> {
             // Never log or print the password; only the hash is stored.
             passwordHash: await hashPassword(account.password),
             status: 'ACTIVE',
+            emailVerifiedAt: new Date(),
           },
         });
 
@@ -293,47 +108,49 @@ async function main(): Promise<void> {
     console.warn(`  ${account.role.padEnd(13)} ${email}`);
   }
 
-  const freelancerEmail = 'freelancer@example.com';
-  const freelancerPassword = '1234';
-  const existingFreelancer = await prisma.freelancer.findFirst({
-    where: {
-      organizationId: organization.id,
-      OR: [{ code: 'FRL-DEMO' }, { email: freelancerEmail }],
-    },
-  });
-  if (existingFreelancer) {
-    await prisma.freelancer.update({
-      where: { id: existingFreelancer.id },
-      data: {
-        code: 'FRL-DEMO',
-        fullName: existingFreelancer.fullName || 'Demo Freelancer',
-        phone: existingFreelancer.phone || '+919900112233',
-        email: freelancerEmail,
-        passwordHash: await hashPassword(freelancerPassword),
-        status: 'ACTIVE',
-        failedLoginAttempts: 0,
-        lockedUntil: null,
-      },
-    });
-  } else {
-    await prisma.freelancer.create({
-      data: {
+  if (env.SEED_DEMO_DATA && !env.isProduction) {
+    const freelancerEmail = 'freelancer@example.com';
+    const freelancerPassword = env.SEED_ADMIN_PASSWORD;
+    const existingFreelancer = await prisma.freelancer.findFirst({
+      where: {
         organizationId: organization.id,
-        code: 'FRL-DEMO',
-        fullName: 'Demo Freelancer',
-        phone: '+919900112233',
-        email: freelancerEmail,
-        city: 'Jaipur',
-        primarySkill: 'CANDID_PHOTOGRAPHER',
-        skills: ['Candid', 'Portrait'],
-        rate: '18000.00',
-        rateType: 'PER_DAY',
-        status: 'ACTIVE',
-        passwordHash: await hashPassword(freelancerPassword),
+        OR: [{ code: 'FRL-DEMO' }, { email: freelancerEmail }],
       },
     });
+    if (existingFreelancer) {
+      await prisma.freelancer.update({
+        where: { id: existingFreelancer.id },
+        data: {
+          code: 'FRL-DEMO',
+          fullName: existingFreelancer.fullName || 'Demo Freelancer',
+          phone: existingFreelancer.phone || '+919900112233',
+          email: freelancerEmail,
+          passwordHash: await hashPassword(freelancerPassword),
+          status: 'ACTIVE',
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+        },
+      });
+    } else {
+      await prisma.freelancer.create({
+        data: {
+          organizationId: organization.id,
+          code: 'FRL-DEMO',
+          fullName: 'Demo Freelancer',
+          phone: '+919900112233',
+          email: freelancerEmail,
+          city: 'Jaipur',
+          primarySkill: 'CANDID_PHOTOGRAPHER',
+          skills: ['Candid', 'Portrait'],
+          rate: '18000.00',
+          rateType: 'PER_DAY',
+          status: 'ACTIVE',
+          passwordHash: await hashPassword(freelancerPassword),
+        },
+      });
+    }
+    console.warn(`  Freelancer portal ${freelancerEmail}`);
   }
-  console.warn(`  Freelancer portal ${freelancerEmail}`);
 
   if (env.SEED_DEMO_DATA && !env.isProduction) {
     await seedDemoData(organization.id, branch.id);
