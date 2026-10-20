@@ -19,13 +19,13 @@ describe('CORS origin allowlist', () => {
   it('refuses a vercel.app subdomain that merely starts with the project name', async () => {
     // Anyone can register these: *.vercel.app names are first-come-first-served,
     // so a project-name prefix was never proof of ownership.
-    expect(await originAllowed('https://frameloom-evil.vercel.app')).toBe(false);
-    expect(await originAllowed('https://frameloom-attacker.vercel.app')).toBe(false);
+    expect(await originAllowed('https://yowflow-evil.vercel.app')).toBe(false);
+    expect(await originAllowed('https://yowflow-attacker.vercel.app')).toBe(false);
   });
 
   it('refuses unrelated and look-alike origins', async () => {
     expect(await originAllowed('https://evil.example.com')).toBe(false);
-    expect(await originAllowed('https://frameloom.vercel.app.evil.com')).toBe(false);
+    expect(await originAllowed('https://yowflow.vercel.app.evil.com')).toBe(false);
     expect(await originAllowed('http://localhost:3000.evil.com')).toBe(false);
   });
 });

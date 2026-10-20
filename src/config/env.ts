@@ -79,7 +79,7 @@ const schema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 
   STORAGE_PROVIDER: z.enum(['LOCAL', 'DATABASE', 'S3', 'R2', 'SUPABASE']).default('LOCAL'),
-  STORAGE_BUCKET: z.string().default('frameloom'),
+  STORAGE_BUCKET: z.string().default('yowflow'),
   STORAGE_REGION: z.string().optional(),
   STORAGE_ENDPOINT: z.string().optional(),
   STORAGE_ACCESS_KEY_ID: z.string().optional(),
@@ -95,9 +95,9 @@ const schema = z.object({
   META_GRAPH_API_VERSION: z.string().regex(/^v\d+\.\d+$/).default('v26.0'),
 
   // White-label identity. Change these (not the code) to resell under another name.
-  BRAND_NAME: z.string().min(1).default('Frameloom'),
-  BRAND_COOKIE_PREFIX: z.string().regex(/^[a-z][a-z0-9]{0,15}$/).default('fl'),
-  BRAND_SUPPORT_EMAIL: z.string().email().default('support@example.com'),
+  BRAND_NAME: z.string().min(1).default('Yowflow'),
+  BRAND_COOKIE_PREFIX: z.string().regex(/^[a-z][a-z0-9]{0,15}$/).default('yf'),
+  BRAND_SUPPORT_EMAIL: z.string().email().default('support@yowflow.com'),
 
   SEED_ORG_NAME: z.string().default('Demo Studio'),
   SEED_ORG_SLUG: z.string().default('demo-studio'),

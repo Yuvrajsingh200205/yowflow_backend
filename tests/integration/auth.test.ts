@@ -144,8 +144,8 @@ describe('authentication', () => {
       .send({ email: org.admin.email, password: org.admin.password });
 
     const cookies = setCookies(response);
-    const access = cookieFor(cookies, 'fl_access_token');
-    const refresh = cookieFor(cookies, 'fl_refresh_token');
+    const access = cookieFor(cookies, 'yf_access_token');
+    const refresh = cookieFor(cookies, 'yf_refresh_token');
 
     expect(access).toBeDefined();
     expect(refresh).toBeDefined();
@@ -182,7 +182,7 @@ describe('authentication', () => {
 
     expect(refreshed.status).toBe(200);
     const rotated = setCookies(refreshed);
-    expect(cookieFor(rotated, 'fl_refresh_token')).toBeDefined();
+    expect(cookieFor(rotated, 'yf_refresh_token')).toBeDefined();
 
     const me = await api().get(`${base}/auth/me`).set('Cookie', cookieHeader(rotated));
     expect(me.status).toBe(200);
@@ -193,13 +193,13 @@ describe('authentication', () => {
     // and the app retries /me -> /refresh indefinitely.
     const rejected = await api()
       .post(`${base}/auth/refresh`)
-      .set('Cookie', 'fl_access_token=stale; fl_refresh_token=not-a-real-token')
+      .set('Cookie', 'yf_access_token=stale; yf_refresh_token=not-a-real-token')
       .send({});
 
     expect(rejected.status).toBe(401);
     const cleared = setCookies(rejected);
-    expect(cookieFor(cleared, 'fl_access_token')).toMatch(/fl_access_token=;/);
-    expect(cookieFor(cleared, 'fl_refresh_token')).toMatch(/fl_refresh_token=;/);
+    expect(cookieFor(cleared, 'yf_access_token')).toMatch(/yf_access_token=;/);
+    expect(cookieFor(cleared, 'yf_refresh_token')).toMatch(/yf_refresh_token=;/);
   });
 
   it('clears both auth cookies when no refresh token is supplied', async () => {
@@ -211,10 +211,10 @@ describe('authentication', () => {
     // portal cookies behind would survive a CRM logout.
     const cleared = setCookies(response);
     for (const name of [
-      'fl_access_token',
-      'fl_refresh_token',
-      'fl_freelancer_access_token',
-      'fl_freelancer_refresh_token',
+      'yf_access_token',
+      'yf_refresh_token',
+      'yf_freelancer_access_token',
+      'yf_freelancer_refresh_token',
     ]) {
       expect(cookieFor(cleared, name)).toMatch(new RegExp(`${name}=;`));
     }
@@ -228,7 +228,7 @@ describe('authentication', () => {
 
     const logout = await api().post(`${base}/auth/logout`).set('Cookie', cookies);
     expect(logout.status).toBe(200);
-    expect(cookieFor(setCookies(logout), 'fl_access_token')).toMatch(/fl_access_token=;/);
+    expect(cookieFor(setCookies(logout), 'yf_access_token')).toMatch(/yf_access_token=;/);
 
     // Even if the browser ignored the deletion, the session is dead server-side.
     const after = await api().get(`${base}/auth/me`).set('Cookie', cookies);

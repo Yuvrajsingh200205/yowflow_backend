@@ -1,6 +1,6 @@
-# Frameloom — Backend
+# Yowflow — Backend
 
-Production backend for Frameloom. Standalone and independently
+Production backend for Yowflow. Standalone and independently
 deployable: it shares no code, build or deploy pipeline with the Next.js frontend.
 
 | | |

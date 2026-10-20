@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Frameloom — PostgreSQL schema
+// Yowflow — PostgreSQL schema
 //
 // PostgreSQL is the single source of truth. There is no MySQL support and no
 // dual-engine configuration anywhere in this service.
