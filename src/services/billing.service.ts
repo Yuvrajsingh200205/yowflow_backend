@@ -45,7 +45,10 @@ export async function getBilling(auth: AuthContext) {
   const trialEndsAt = settings.trialEndsAt ?? null;
   const trialDaysLeft = trialEndsAt ? Math.max(0, Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / 86_400_000)) : null;
   const seatsUsed = await prisma.user.count({ where: { organizationId: auth.organizationId, deletedAt: null, status: 'ACTIVE' } });
-  const status = billing.status === 'active' ? 'active' : trialEndsAt && new Date(trialEndsAt) < new Date() ? 'trial_expired' : (billing.status ?? 'trialing');
+  // A workspace provisioned by an administrator (no trial, no subscription record) is treated as active.
+  const status = billing.status === 'active' || (!billing.status && !trialEndsAt)
+    ? 'active'
+    : trialEndsAt && !billing.status && new Date(trialEndsAt) < new Date() ? 'trial_expired' : (billing.status ?? 'trialing');
   return {
     configured: isConfigured(),
     mode: isConfigured() ? mode() : null,

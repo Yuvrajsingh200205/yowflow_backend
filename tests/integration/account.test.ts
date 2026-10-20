@@ -171,3 +171,27 @@ describe('account lifecycle', () => {
     expect(JSON.stringify(res.body)).not.toContain(org.admin.email);
   });
 });
+
+describe('workspace members', () => {
+  beforeEach(async () => { await resetDatabase(); outbox.length = 0; });
+
+  it('lists every user in the workspace for an admin, and refuses members', async () => {
+    const org = await seedTestOrganization();
+    const adminToken = await login(org.admin);
+    const res = await api().get(`${base}/settings/members`).set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.map((m: { email: string }) => m.email)).toContain(org.admin.email);
+    expect(res.body.data[0]).not.toHaveProperty('passwordHash');
+
+    const memberToken = await login(org.member);
+    expect((await api().get(`${base}/settings/members`).set('Authorization', `Bearer ${memberToken}`)).status).toBe(403);
+  });
+
+  it('includes a self-serve owner who is not in the employee directory', async () => {
+    await api().post(`${base}/auth/signup`).send(signupBody);
+    const token = await login({ email: signupBody.email, password: signupBody.password } as never);
+    const res = await api().get(`${base}/settings/members`).set('Authorization', `Bearer ${token}`);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].roles).toContain('Admin');
+  });
+});

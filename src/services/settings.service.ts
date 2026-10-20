@@ -623,3 +623,25 @@ export async function reviewModuleAccessRequest(
   // — and their next `/auth/me` — already carries the new module.
   return toRequestResponse(updated);
 }
+
+
+/** Everyone who can sign in to this workspace (unlike the employee directory, this includes owners and admins). */
+export async function listWorkspaceMembers(auth: AuthContext) {
+  const users = await prisma.user.findMany({
+    where: { organizationId: auth.organizationId, deletedAt: null },
+    orderBy: [{ createdAt: 'asc' }],
+    select: {
+      id: true, fullName: true, email: true, status: true, lastLoginAt: true, emailVerifiedAt: true,
+      userRoles: { select: { role: { select: { name: true, deletedAt: true, status: true } } } },
+    },
+  });
+  return users.map((u) => ({
+    id: u.id,
+    fullName: u.fullName,
+    email: u.email,
+    status: u.status,
+    lastLoginAt: u.lastLoginAt,
+    emailVerified: u.emailVerifiedAt !== null,
+    roles: u.userRoles.filter((ur) => ur.role.deletedAt === null && ur.role.status === 'ACTIVE').map((ur) => ur.role.name),
+  }));
+}

@@ -72,3 +72,7 @@ export const reviewModuleAccessRequest = asyncHandler(async (req, res) => {
     ),
   );
 });
+
+export const listWorkspaceMembers = asyncHandler(async (req, res) =>
+  sendSuccess(res, await settingsService.listWorkspaceMembers(requireAuthContext(req))),
+);

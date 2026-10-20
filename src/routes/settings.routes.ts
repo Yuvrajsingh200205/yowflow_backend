@@ -32,6 +32,7 @@ import {
 export const settingsWorkspaceRouter = Router();
 
 settingsWorkspaceRouter.get('/workspace', controller.getWorkspace);
+settingsWorkspaceRouter.get('/members', requirePermission('SETTING_UPDATE'), controller.listWorkspaceMembers);
 
 settingsWorkspaceRouter.patch(
   '/profile',
