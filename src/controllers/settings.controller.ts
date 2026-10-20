@@ -3,6 +3,7 @@ import { ModuleAccessRequestStatus } from '@prisma/client';
 import { asyncHandler, auditContext, requireAuthContext } from '../utils/http';
 import { sendCreated, sendSuccess } from '../utils/response';
 import * as settingsService from '../services/settings.service';
+import { brand } from '../config/brand';
 
 /** Matches the who/where/when envelope `/auth` passes to the account service. */
 const requestMeta = (req: Request) => ({
@@ -40,8 +41,8 @@ export const changePassword = asyncHandler(async (req, res) => {
   const auth = requireAuthContext(req);
   await settingsService.changePassword(auth, req.body, requestMeta(req));
   // Every other session was revoked, so this client's cookies are stale too.
-  res.clearCookie('wpp_access_token', { path: '/' });
-  res.clearCookie('wpp_refresh_token', { path: '/' });
+  res.clearCookie(brand.cookie.access, { path: '/' });
+  res.clearCookie(brand.cookie.refresh, { path: '/' });
   return sendSuccess(res, { passwordChanged: true });
 });
 

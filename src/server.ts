@@ -1,3 +1,4 @@
+import { brand } from './config/brand';
 import http from 'http';
 import { createApp } from './app';
 import { env } from './config/env';
@@ -23,7 +24,7 @@ async function main(): Promise<void> {
         apiBasePath: env.API_BASE_PATH,
         docs: `/docs`,
       },
-      'wedding-photo-planet backend listening',
+      `${brand.slug} backend listening`,
     );
   });
 

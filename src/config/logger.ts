@@ -1,3 +1,4 @@
+import { brand } from './brand';
 import pino from 'pino';
 import { env } from './env';
 
@@ -33,7 +34,7 @@ export const logger = pino({
     ],
     censor: '[REDACTED]',
   },
-  base: { service: 'wedding-photo-planet-backend' },
+  base: { service: `${brand.slug}-backend` },
   // Worker-thread transports are not usable in serverless functions.
   transport:
     env.isProduction || process.env.VERCEL

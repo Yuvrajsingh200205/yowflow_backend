@@ -17,6 +17,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { generalLimiter } from './middleware/rateLimiter';
 import { jsonReplacer } from './utils/serialize';
 import { openApiDocument } from './docs/openapi';
+import { brand } from './config/brand';
 import { localObjectPath, verifyLocalSignedUrl } from './services/storage.service';
 
 let cachedApp: ReturnType<typeof createApp> | undefined;
@@ -58,7 +59,7 @@ export function createApp() {
   // Strict allowlist — an unknown Origin is rejected rather than reflected (§38).
   const corsOrigins = env.corsOrigins.map((origin) => origin.replace(/\/$/, ''));
   // Preview deployments are matched on the team-scoped suffix only. A regex on
-  // the project-name prefix let anyone register wedding-photo-planet-<x>.vercel.app
+  // the project-name prefix let anyone register <project-name>-<x>.vercel.app
   // and receive credentialed cross-origin access.
   const previewSuffix = env.corsVercelPreviewSuffix.toLowerCase();
   const isTeamPreview = (origin: string) =>
@@ -207,7 +208,7 @@ export function createApp() {
     res.json({
       success: true,
       data: {
-        service: 'Wedding Photo Planet CRM API',
+        service: `${brand.name} API`,
         version: '1.0.0',
         database: 'postgresql',
         environment: env.NODE_ENV,
@@ -233,7 +234,7 @@ export function createApp() {
       success: true,
       data: {
         status: 'ok',
-        service: 'wedding-photo-planet-backend',
+        service: `${brand.slug}-backend`,
         environment: env.NODE_ENV,
         uptimeSeconds: Math.round(process.uptime()),
         timestamp: new Date().toISOString(),
@@ -275,7 +276,7 @@ export function createApp() {
     '/docs',
     swaggerUi.serve,
     swaggerUi.setup(openApiDocument, {
-      customSiteTitle: 'Wedding Photo Planet CRM API',
+      customSiteTitle: `${brand.name} API`,
       swaggerOptions: { persistAuthorization: true },
     }),
   );

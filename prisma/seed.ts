@@ -293,7 +293,7 @@ async function main(): Promise<void> {
     console.warn(`  ${account.role.padEnd(13)} ${email}`);
   }
 
-  const freelancerEmail = 'freelancer@gmail.com';
+  const freelancerEmail = 'freelancer@example.com';
   const freelancerPassword = '1234';
   const existingFreelancer = await prisma.freelancer.findFirst({
     where: {
@@ -433,7 +433,7 @@ async function seedDemoData(organizationId: string, branchId: string): Promise<v
       code: 'FRL-0001',
       fullName: 'Rohit Candid',
       phone: '+919900112233',
-      email: 'freelancer@gmail.com',
+      email: 'freelancer@example.com',
       city: 'Jaipur',
       primarySkill: 'CANDID_PHOTOGRAPHER',
       skills: ['Candid', 'Portrait'],

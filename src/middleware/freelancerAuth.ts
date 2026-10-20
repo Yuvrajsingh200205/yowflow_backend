@@ -3,9 +3,10 @@ import { SessionStatus } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { verifyFreelancerAccessToken } from '../utils/freelancerJwt';
 import { forbidden, unauthenticated } from '../utils/errors';
+import { brand } from '../config/brand';
 
-export const FREELANCER_ACCESS_COOKIE = 'wpp_freelancer_access_token';
-export const FREELANCER_REFRESH_COOKIE = 'wpp_freelancer_refresh_token';
+export const FREELANCER_ACCESS_COOKIE = brand.cookie.freelancerAccess;
+export const FREELANCER_REFRESH_COOKIE = brand.cookie.freelancerRefresh;
 
 function extractToken(req: Request): string | null {
   return (req.cookies as Record<string, string> | undefined)?.[FREELANCER_ACCESS_COOKIE] ?? null;

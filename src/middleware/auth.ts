@@ -4,9 +4,10 @@ import { verifyAccessToken } from '../utils/jwt';
 import { forbidden, unauthenticated } from '../utils/errors';
 import { TtlCache } from '../utils/cache';
 import { AuthContext } from '../types';
+import { brand } from '../config/brand';
 
-export const ACCESS_COOKIE = 'wpp_access_token';
-export const REFRESH_COOKIE = 'wpp_refresh_token';
+export const ACCESS_COOKIE = brand.cookie.access;
+export const REFRESH_COOKIE = brand.cookie.refresh;
 
 /**
  * Authority is never cached: a revoked session, a disabled account or a

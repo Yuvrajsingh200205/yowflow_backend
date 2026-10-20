@@ -60,7 +60,7 @@ describe('Meta Lead Ads webhook', () => {
       data: {
         organizationId: org.organizationId,
         pageId: process.env.META_PAGE_ID as string,
-        pageName: 'Wedding Photo Planet',
+        pageName: 'Demo Studio Page',
       },
     });
     vi.restoreAllMocks();

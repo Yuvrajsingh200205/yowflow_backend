@@ -1,4 +1,5 @@
 import { env } from '../config/env';
+import { brand } from '../config/brand';
 import { PERMISSIONS } from '../types/permissions';
 
 type Obj = Record<string, unknown>;
@@ -250,10 +251,10 @@ const base = env.API_BASE_PATH;
 export const openApiDocument = {
   openapi: '3.0.3',
   info: {
-    title: 'Wedding Photo Planet CRM API',
+    title: `${brand.name} API`,
     version: '1.0.0',
     description: [
-      'Production backend for the Wedding Photo Planet CRM.',
+      `Production backend for ${brand.name}.`,
       '',
       '**Database:** PostgreSQL is the single source of truth. No other engine is supported.',
       '',
@@ -309,7 +310,7 @@ export const openApiDocument = {
   components: {
     securitySchemes: {
       bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
-      cookieAuth: { type: 'apiKey', in: 'cookie', name: 'wpp_access_token' },
+      cookieAuth: { type: 'apiKey', in: 'cookie', name: brand.cookie.access },
     },
     schemas: {
       SuccessEnvelope: {

@@ -1,8 +1,8 @@
 {
-  "name": "wedding-photo-planet-backend",
+  "name": "frameloom-backend",
   "version": "1.0.0",
   "private": true,
-  "description": "Production backend for the Wedding Photo Planet CRM — Node.js, Express, TypeScript, Prisma, PostgreSQL.",
+  "description": "Production backend for Frameloom — Node.js, Express, TypeScript, Prisma, PostgreSQL.",
   "main": "dist/server.js",
   "type": "commonjs",
   "engines": {

@@ -858,14 +858,14 @@ describe('freelancer foundation security', () => {
       .send({ identifier: 'foundation.artist@example.com', password: 'Freelancer1' })
       .expect(200);
     const cookies = cookieHeader(loginResponse);
-    expect(cookies).toContain('wpp_freelancer_access_token=');
-    expect(cookies).toContain('wpp_freelancer_refresh_token=');
+    expect(cookies).toContain('fl_freelancer_access_token=');
+    expect(cookies).toContain('fl_freelancer_refresh_token=');
     expect(JSON.stringify(loginResponse.body)).not.toContain('accessToken');
     expect(JSON.stringify(loginResponse.body)).not.toContain('refreshToken');
     expect(JSON.stringify(loginResponse.body)).not.toContain('passwordHash');
     expect(JSON.stringify(loginResponse.body)).not.toContain('failedLoginAttempts');
     expect(JSON.stringify(loginResponse.body)).not.toContain('lockedUntil');
-    const accessCookieValue = cookieValue(cookies, 'wpp_freelancer_access_token');
+    const accessCookieValue = cookieValue(cookies, 'fl_freelancer_access_token');
     expect(accessCookieValue).toBeTruthy();
 
     await api()
@@ -896,7 +896,7 @@ describe('freelancer foundation security', () => {
       .set('Cookie', cookies)
       .expect(200);
     const refreshedCookies = cookieHeader(refreshed);
-    expect(refreshedCookies).toContain('wpp_freelancer_access_token=');
+    expect(refreshedCookies).toContain('fl_freelancer_access_token=');
     expect(JSON.stringify(refreshed.body)).not.toContain('accessToken');
 
     await api()

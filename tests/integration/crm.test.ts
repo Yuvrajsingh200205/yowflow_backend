@@ -96,7 +96,7 @@ describe('CRM: clients, projects, events, shoots', () => {
         fullName: 'Bad Employee Code',
         email: 'bad.employee@test-studio.test',
         password: 'TestPassw0rd!',
-        employeeCode: 'WPP-999',
+        employeeCode: 'EMP-999',
         roleIds: [org.roleIds.MEMBER],
       })
       .expect(400);

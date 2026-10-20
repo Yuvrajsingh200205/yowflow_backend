@@ -57,7 +57,7 @@ const schema = z.object({
 
   CORS_ORIGIN: z
     .string()
-    .default(onVercel ? 'https://wedding-photo-planet.vercel.app' : 'http://localhost:3000,http://localhost:3002'),
+    .default(onVercel ? '' : 'http://localhost:3000,http://localhost:3002'),
 
   /**
    * Suffix that Vercel preview deployments for THIS team end with, e.g.
@@ -79,7 +79,7 @@ const schema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 
   STORAGE_PROVIDER: z.enum(['LOCAL', 'DATABASE', 'S3', 'R2', 'SUPABASE']).default('LOCAL'),
-  STORAGE_BUCKET: z.string().default('wedding-photo-planet'),
+  STORAGE_BUCKET: z.string().default('frameloom'),
   STORAGE_REGION: z.string().optional(),
   STORAGE_ENDPOINT: z.string().optional(),
   STORAGE_ACCESS_KEY_ID: z.string().optional(),
@@ -94,8 +94,13 @@ const schema = z.object({
   META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
   META_GRAPH_API_VERSION: z.string().regex(/^v\d+\.\d+$/).default('v26.0'),
 
-  SEED_ORG_NAME: z.string().default('Wedding Photo Planet'),
-  SEED_ORG_SLUG: z.string().default('wedding-photo-planet'),
+  // White-label identity. Change these (not the code) to resell under another name.
+  BRAND_NAME: z.string().min(1).default('Frameloom'),
+  BRAND_COOKIE_PREFIX: z.string().regex(/^[a-z][a-z0-9]{0,15}$/).default('fl'),
+  BRAND_SUPPORT_EMAIL: z.string().email().default('support@example.com'),
+
+  SEED_ORG_NAME: z.string().default('Demo Studio'),
+  SEED_ORG_SLUG: z.string().default('demo-studio'),
   SEED_ADMIN_EMAIL: z.string().email().default('admin@example.com'),
   SEED_ADMIN_PASSWORD: z.string().default('ChangeMe@Admin2026'),
   SEED_DEMO_DATA: bool('false'),
@@ -135,6 +140,9 @@ if (onVercel && !/sslmode=/i.test(raw.DATABASE_URL)) {
 }
 
 export const env = {
+  brandName: raw.BRAND_NAME,
+  brandCookiePrefix: raw.BRAND_COOKIE_PREFIX,
+  brandSupportEmail: raw.BRAND_SUPPORT_EMAIL,
   ...raw,
   isProduction: raw.NODE_ENV === 'production',
   isTest: raw.NODE_ENV === 'test',

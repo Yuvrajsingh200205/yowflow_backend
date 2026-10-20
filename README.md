@@ -1,6 +1,6 @@
-# Wedding Photo Planet CRM — Backend
+# Frameloom — Backend
 
-Production backend for the Wedding Photo Planet CRM. Standalone and independently
+Production backend for Frameloom. Standalone and independently
 deployable: it shares no code, build or deploy pipeline with the Next.js frontend.
 
 | | |
