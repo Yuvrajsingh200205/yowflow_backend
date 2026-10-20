@@ -297,3 +297,41 @@ export async function getSummary(auth: AuthContext): Promise<DashboardSummary> {
     })),
   };
 }
+
+
+const monthKey = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+
+/**
+ * Month-by-month series for the dashboard charts. Money series are only
+ * included when the caller may view payments / expenses, so the dashboard
+ * can never leak figures a role is not entitled to.
+ */
+export async function getTrends(auth: AuthContext, months = 8) {
+  const count = Math.min(Math.max(Math.trunc(months), 3), 24);
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (count - 1), 1));
+  const keys = Array.from({ length: count }, (_, i) => monthKey(new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + i, 1))));
+  const bucket = (rows: Array<{ at: Date; value: number }>) => {
+    const m = new Map<string, number>(keys.map((k) => [k, 0]));
+    for (const r of rows) { const k = monthKey(r.at); if (m.has(k)) m.set(k, (m.get(k) ?? 0) + r.value); }
+    return keys.map((k) => m.get(k) ?? 0);
+  };
+  const org = auth.organizationId;
+  const canPay = auth.permissions.has('PAYMENT_VIEW');
+  const canExpense = auth.permissions.has('EXPENSE_VIEW');
+
+  const [payments, expenses, leads, projects] = await Promise.all([
+    canPay ? prisma.payment.findMany({ where: { organizationId: org, status: 'COMPLETED', paymentDate: { gte: start } }, select: { paymentDate: true, amount: true } }) : [],
+    canExpense ? prisma.expense.findMany({ where: { organizationId: org, deletedAt: null, expenseDate: { gte: start } }, select: { expenseDate: true, amount: true } }) : [],
+    prisma.lead.findMany({ where: { organizationId: org, deletedAt: null, createdAt: { gte: start } }, select: { createdAt: true } }),
+    prisma.project.findMany({ where: { organizationId: org, deletedAt: null, createdAt: { gte: start } }, select: { createdAt: true } }),
+  ]);
+
+  return {
+    months: keys,
+    revenue: canPay ? bucket(payments.map((p) => ({ at: p.paymentDate, value: Number(p.amount) }))) : null,
+    expenses: canExpense ? bucket(expenses.map((e) => ({ at: e.expenseDate, value: Number(e.amount) }))) : null,
+    leads: bucket(leads.map((l) => ({ at: l.createdAt, value: 1 }))),
+    bookings: bucket(projects.map((p) => ({ at: p.createdAt, value: 1 }))),
+  };
+}
