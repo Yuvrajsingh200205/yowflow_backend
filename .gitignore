@@ -14,3 +14,4 @@ coverage/
 # written by STORAGE_PROVIDER=LOCAL — they must never reach the repository.
 uploads/
 .local-storage/
+.neon

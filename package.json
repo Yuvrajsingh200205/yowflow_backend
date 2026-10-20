@@ -28,6 +28,8 @@
     "vercel-build": "prisma generate"
   },
   "dependencies": {
+    "@neon/config": "^1.9.2",
+    "@neon/env": "^1.6.3",
     "@prisma/client": "^6.4.1",
     "bcryptjs": "^3.0.2",
     "compression": "^1.8.1",
