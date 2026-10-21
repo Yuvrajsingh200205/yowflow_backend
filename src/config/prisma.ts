@@ -4,12 +4,21 @@ import { logger } from './logger';
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
+/** Number of SQL statements executed since the counter was last reset (only when PRISMA_COUNT_QUERIES=1). */
+export const queryStats = { count: 0 };
+
 function createPrisma(): PrismaClient {
   const client = new PrismaClient({
-    log: env.isDevelopment
-      ? [{ emit: 'event', level: 'warn' }, { emit: 'event', level: 'error' }]
-      : [{ emit: 'event', level: 'error' }],
+    log: [
+      ...(env.isDevelopment ? [{ emit: 'event' as const, level: 'warn' as const }] : []),
+      { emit: 'event' as const, level: 'error' as const },
+      // Opt-in query counting for the query-budget tests and profiling (PRISMA_COUNT_QUERIES=1).
+      ...(process.env.PRISMA_COUNT_QUERIES === '1' ? [{ emit: 'event' as const, level: 'query' as const }] : []),
+    ],
   });
+  if (process.env.PRISMA_COUNT_QUERIES === '1') {
+    client.$on('query' as never, () => { queryStats.count += 1; });
+  }
   client.$on('error' as never, (e: unknown) => logger.error({ prisma: e }, 'prisma error'));
   client.$on('warn' as never, (e: unknown) => logger.warn({ prisma: e }, 'prisma warning'));
   return client;

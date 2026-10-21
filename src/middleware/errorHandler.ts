@@ -10,6 +10,8 @@ interface Normalized {
   code: ErrorCode;
   message: string;
   details: ErrorDetail[];
+  /** Transient failure: the client may retry the same request. */
+  retryable?: boolean;
 }
 
 /**
@@ -57,6 +59,29 @@ function normalize(error: unknown): Normalized {
           code: 'CONFLICT',
           message: 'A referenced record does not exist or is still in use',
           details: [],
+        };
+      // Connection-pool exhaustion / database briefly unreachable / deadlock: all transient and safe to retry.
+      case 'P2024':
+      case 'P1001':
+      case 'P1002':
+      case 'P1008':
+      case 'P1017':
+      case 'P2028':
+      case 'P2037':
+        return {
+          statusCode: 503,
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'The service is busy right now. Please try again in a moment.',
+          details: [],
+          retryable: true,
+        };
+      case 'P2034':
+        return {
+          statusCode: 409,
+          code: 'CONFLICT',
+          message: 'The record was changed by someone else at the same time. Please retry.',
+          details: [],
+          retryable: true,
         };
       case 'P2025':
         return { statusCode: 404, code: 'NOT_FOUND', message: 'Resource not found', details: [] };
@@ -106,6 +131,7 @@ function normalize(error: unknown): Normalized {
       code: 'SERVICE_UNAVAILABLE',
       message: 'Database connection is unavailable. Please try again in a moment.',
       details: [],
+      retryable: true,
     };
   }
 
@@ -151,7 +177,10 @@ export function errorHandler(
     userId: req.auth?.userId,
   };
 
-  if (normalized.statusCode >= 500) {
+  if (normalized.retryable) {
+    // Transient infrastructure trouble: one concise line, not a stack trace per request.
+    logger.warn({ ...log, code: normalized.code, cause: (error as Error)?.message?.split('\n').pop() }, 'transient database failure');
+  } else if (normalized.statusCode >= 500) {
     logger.error({ ...log, err: error }, 'request failed');
   } else {
     // The underlying cause is logged server-side even for 4xx — the client
@@ -164,6 +193,7 @@ export function errorHandler(
 
   if (res.headersSent) return;
 
+  if (normalized.retryable) res.setHeader('Retry-After', '2');
   res.status(normalized.statusCode).json({
     success: false,
     error: {

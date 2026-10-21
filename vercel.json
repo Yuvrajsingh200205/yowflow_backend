@@ -5,5 +5,13 @@
       "includeFiles": "node_modules/.prisma/client/**"
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api"
+    }
+  ],
+  "regions": [
+    "sin1"
+  ]
 }

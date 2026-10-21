@@ -94,6 +94,10 @@ const schema = z.object({
   META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
   META_GRAPH_API_VERSION: z.string().regex(/^v\d+\.\d+$/).default('v26.0'),
 
+  // Prisma connection pool. Defaults: 5 per serverless instance, 15 on a long-running server.
+  DB_POOL_SIZE: z.coerce.number().int().min(1).max(100).optional(),
+  DB_POOL_TIMEOUT_SECONDS: z.coerce.number().int().min(1).max(120).default(30),
+
   // Public URL of the frontend; used to build links in e-mails.
   APP_URL: z.string().url().default('http://localhost:3000'),
   // Outbound mail. Without SMTP_HOST the mailer logs instead of sending (development only).
@@ -148,6 +152,18 @@ if (['S3', 'R2', 'SUPABASE'].includes(raw.STORAGE_PROVIDER)) {
 }
 if (raw.NODE_ENV === 'production' && raw.STORAGE_PROVIDER === 'DATABASE' && !raw.STORAGE_PUBLIC_BASE_URL) {
   throw new Error('Production document storage requires STORAGE_PUBLIC_BASE_URL to generate signed file URLs for the deployed backend.');
+}
+// Pool tuning is applied to the connection string unless the operator already set it there.
+{
+  const params: Record<string, string> = {};
+  const has = (k: string) => new RegExp(`[?&]${k}=`, 'i').test(raw.DATABASE_URL);
+  if (!has('connection_limit')) params.connection_limit = String(raw.DB_POOL_SIZE ?? (onVercel ? 5 : 15));
+  if (!has('pool_timeout')) params.pool_timeout = String(raw.DB_POOL_TIMEOUT_SECONDS);
+  if (!has('connect_timeout')) params.connect_timeout = '20';
+  // Neon's pooled endpoint runs PgBouncer in transaction mode, which needs this flag for Prisma.
+  if (/-pooler\./i.test(raw.DATABASE_URL) && !has('pgbouncer')) params.pgbouncer = 'true';
+  const extra = Object.entries(params).map(([k, v]) => `${k}=${v}`).join('&');
+  if (extra) raw.DATABASE_URL += `${raw.DATABASE_URL.includes('?') ? '&' : '?'}${extra}`;
 }
 if (onVercel && !/sslmode=/i.test(raw.DATABASE_URL)) {
   raw.DATABASE_URL += `${raw.DATABASE_URL.includes('?') ? '&' : '?'}sslmode=require`;
