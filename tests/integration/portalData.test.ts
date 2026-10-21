@@ -206,4 +206,20 @@ describe('client portal — data API', () => {
     await f.staff.delete(`${base}/projects/${f.projectId}/gallery/folders/${folder.body.data.id}`).expect(204);
     await f.staff.post(`${base}/projects/${f.projectId}/gallery/derivatives`).expect(200);
   });
+
+  it('parallel first uploads into a new section create one gallery and one section', async () => {
+    const other = await seedPortalStudio('race@portal.test', 'race-studio');
+    const bytes = await jpeg(99);
+    const one = async (name: string) => {
+      const intent = await other.staff.post(`${base}/projects/${other.projectId}/gallery/upload-intent`).send({ originalName: name, mimeType: 'image/jpeg' }).expect(200);
+      const signed = new URL(intent.body.data.uploadUrl);
+      await request(app).put(`${signed.pathname}${signed.search}`).set('content-type', 'image/jpeg').send(bytes).expect(204);
+      return other.staff.post(`${base}/projects/${other.projectId}/gallery/media`).send({ originalName: name, mimeType: 'image/jpeg', bucket: intent.body.data.bucket, objectKey: intent.body.data.objectKey, sizeBytes: bytes.length, sectionName: 'Mehendi' });
+    };
+    const results = await Promise.all(Array.from({ length: 8 }, (_, i) => one(`race-${i}.jpg`)));
+    expect(results.map((r) => r.status)).toEqual(Array(8).fill(201));
+    const settings = await other.staff.get(`${base}/projects/${other.projectId}/gallery/settings`).expect(200);
+    expect(settings.body.data.sections.filter((x: { name: string }) => x.name === 'Mehendi')).toHaveLength(1);
+    expect(settings.body.data.sections[0].mediaCount).toBe(8);
+  });
 });

@@ -196,38 +196,44 @@ export async function addGalleryMedia(
   // created on the first upload into them. Chaining these inside a single
   // interactive transaction is what blew Prisma's 5s limit and surfaced as a
   // bare "database error".
-  let section = await prisma.gallerySection.findFirst({
+  const lookup = (db: Pick<typeof prisma, 'gallerySection'>) => db.gallerySection.findFirst({
     where: { name: sectionName, deletedAt: null, gallery: { projectId, deletedAt: null } },
     select: { id: true, galleryId: true },
   });
+  let section = await lookup(prisma);
 
   if (!section) {
-    const gallery = await prisma.gallery.upsert({
-      where: { projectId },
-      create: {
-        organizationId: auth.organizationId,
-        projectId,
-        title: project.name ?? 'Wedding Gallery',
-        status: 'DRAFT',
+    // First upload into this section. Parallel uploads (a studio dropping a folder, or two
+    // people at once) would each try to create the gallery and the section, so creation is
+    // serialised per project with an advisory lock and re-checked inside it.
+    section = await prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${projectId}))`;
+        const existing = await lookup(tx);
+        if (existing) return existing;
+        const gallery = await tx.gallery.upsert({
+          where: { projectId },
+          create: { organizationId: auth.organizationId, projectId, title: project.name ?? 'Wedding Gallery', status: 'DRAFT' },
+          update: {},
+          select: { id: true },
+        });
+        return tx.gallerySection.create({
+          data: {
+            organizationId: auth.organizationId,
+            galleryId: gallery.id,
+            name: sectionName,
+            // A section the studio uploaded into is meant to be seen, so it opens
+            // visible and unwatermarked rather than needing a second trip.
+            isVisibleToClient: true,
+            isDownloadAllowed: true,
+            isShareAllowed: true,
+            hasWatermark: false,
+          },
+          select: { id: true, galleryId: true },
+        });
       },
-      update: {},
-      select: { id: true },
-    });
-    const created = await prisma.gallerySection.create({
-      data: {
-        organizationId: auth.organizationId,
-        galleryId: gallery.id,
-        name: sectionName,
-        // A section the studio uploaded into is meant to be seen, so it opens
-        // visible and unwatermarked rather than needing a second trip.
-        isVisibleToClient: true,
-        isDownloadAllowed: true,
-        isShareAllowed: true,
-        hasWatermark: false,
-      },
-      select: { id: true, galleryId: true },
-    });
-    section = created;
+      { timeout: 15_000, maxWait: 10_000 },
+    );
   }
 
   // orderIndex stays at its default and the gallery reads back in upload order.
@@ -238,8 +244,8 @@ export async function addGalleryMedia(
       const media = await tx.galleryMedia.create({
         data: {
           organizationId: auth.organizationId,
-          galleryId: section.galleryId,
-          sectionId: section.id,
+          galleryId: section!.galleryId,
+          sectionId: section!.id,
           fileId: file.id,
           title: input.title?.trim() || input.originalName,
           mediaType,
