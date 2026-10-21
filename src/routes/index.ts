@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import { sharedGalleryRouter } from './sharedGallery.routes';
 import authRoutes from './auth.routes';
 import publicRoutes from './public.routes';
+import { portalRouter } from './portal.routes';
 import { apiKeyRouter, billingRouter } from './billing.routes';
 import freelancerPortalRoutes from './freelancerPortal.routes';
 import { metaIntegrationRouter } from './integration.routes';
@@ -32,6 +33,7 @@ const router = Router();
 // Public (rate-limited) authentication surface.
 router.use('/auth', authRoutes);
 router.use('/public', publicRoutes);
+router.use('/portal', portalRouter);
 router.use('/freelancer-portal', freelancerPortalRoutes);
 router.use('/integrations/meta', metaIntegrationRouter);
 // Public: the share token is the credential, so this sits before requireAuth.

@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import * as controller from '../controllers/crm.controller';
+import * as portal from '../controllers/portal.controller';
+import { invitePortalUserSchema, portalUserParams, portalUserStatusSchema } from '../validators/portal.validator';
 import { validate } from '../middleware/validate';
 import { requireAnyPermission, requirePermission } from '../middleware/rbac';
 import { idParam } from '../validators/common.validator';
@@ -54,6 +56,12 @@ clientRouter.post(
   validate({ params: idParam, body: clientNoteSchema }),
   controller.addClientNote,
 );
+
+// Studio side of the client portal: who from this client's family can sign in.
+clientRouter.get('/:id/portal-access', requirePermission('CLIENT_VIEW'), validate({ params: idParam }), portal.listAccess);
+clientRouter.post('/:id/portal-access', requirePermission('CLIENT_UPDATE'), validate({ params: idParam, body: invitePortalUserSchema }), portal.invite);
+clientRouter.patch('/:id/portal-access/:portalUserId', requirePermission('CLIENT_UPDATE'), validate({ params: portalUserParams, body: portalUserStatusSchema }), portal.setStatus);
+clientRouter.delete('/:id/portal-access/:portalUserId', requirePermission('CLIENT_UPDATE'), validate({ params: portalUserParams }), portal.removeAccess);
 
 export const leadRouter = Router();
 

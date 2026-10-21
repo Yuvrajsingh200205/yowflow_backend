@@ -76,3 +76,21 @@ export function passwordResetEmail(to: string, name: string, link: string): Mail
     html: layout('Reset your password', `Hi ${name}, use the button below to choose a new password. This link expires in 1 hour.`, { label: 'Choose a new password', href: link }),
   };
 }
+
+export function portalInviteEmail(to: string, name: string, studioName: string, link: string): MailMessage {
+  return {
+    to,
+    subject: `${studioName} invited you to your private portal`,
+    text: `Hi ${name},\n\n${studioName} has set up a private portal for you — your wedding gallery, schedule and payments in one place.\n\nChoose a password to get started:\n${link}\n\nThis link expires in 7 days.`,
+    html: layout('Your private portal is ready', `Hi ${name}, <strong>${studioName}</strong> has set up a private portal for you: your gallery, schedule and payment summary in one place. Choose a password to get started. This link expires in 7 days.`, { label: 'Open my portal', href: link }),
+  };
+}
+
+export function portalResetEmail(to: string, name: string, link: string): MailMessage {
+  return {
+    to,
+    subject: `Reset your ${brand.name} portal password`,
+    text: `Hi ${name},\n\nUse this link to choose a new portal password:\n${link}\n\nThe link expires in 1 hour. If you did not ask for this, ignore this email.`,
+    html: layout('Reset your password', `Hi ${name}, use the button below to choose a new password for your portal. This link expires in 1 hour.`, { label: 'Choose a new password', href: link }),
+  };
+}

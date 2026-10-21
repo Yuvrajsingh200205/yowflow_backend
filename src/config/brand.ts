@@ -16,5 +16,7 @@ export const brand = {
     refresh: `${env.brandCookiePrefix}_refresh_token`,
     freelancerAccess: `${env.brandCookiePrefix}_freelancer_access_token`,
     freelancerRefresh: `${env.brandCookiePrefix}_freelancer_refresh_token`,
+    portalAccess: `${env.brandCookiePrefix}_portal_access_token`,
+    portalRefresh: `${env.brandCookiePrefix}_portal_refresh_token`,
   },
 } as const;

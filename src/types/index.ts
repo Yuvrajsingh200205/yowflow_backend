@@ -27,6 +27,16 @@ export interface AuthContext {
   };
 }
 
+/** A client (couple/family) signed in to the client portal. Never shares a code path with studio staff. */
+export interface PortalAuthContext {
+  portalUserId: string;
+  organizationId: string;
+  clientId: string;
+  sessionId: string;
+  email: string;
+  fullName: string;
+}
+
 export interface FreelancerAuthContext {
   freelancerId: string;
   organizationId: string;
@@ -41,6 +51,7 @@ declare global {
     interface Request {
       auth?: AuthContext;
       freelancerAuth?: FreelancerAuthContext;
+      portalAuth?: PortalAuthContext;
       requestId: string;
     }
     interface Locals {

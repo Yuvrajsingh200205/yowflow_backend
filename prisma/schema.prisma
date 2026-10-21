@@ -55,6 +55,11 @@ enum ApiKeyScope {
   FULL
 }
 
+enum PortalTokenType {
+  INVITE
+  RESET_PASSWORD
+}
+
 enum RoleType {
   SYSTEM
   CUSTOM
@@ -2675,6 +2680,7 @@ model ClientPortalUser {
   comments      ClientPortalComment[]
   requests      ClientPortalRequest[]
   notifications ClientPortalNotification[]
+  tokens        PortalToken[]
 
   @@unique([organizationId, email])
   @@index([clientId, status])
@@ -3086,4 +3092,22 @@ model ApiKey {
 
   @@index([organizationId])
   @@map("api_keys")
+}
+
+
+/// One-time invite / password-reset tokens for client-portal users. Only the
+/// SHA-256 of the token is stored.
+model PortalToken {
+  id           String          @id @default(uuid()) @db.Uuid
+  portalUserId String          @map("portal_user_id") @db.Uuid
+  type         PortalTokenType
+  tokenHash    String          @unique @map("token_hash") @db.VarChar(64)
+  expiresAt    DateTime        @map("expires_at") @db.Timestamptz(6)
+  usedAt       DateTime?       @map("used_at") @db.Timestamptz(6)
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  portalUser ClientPortalUser @relation(fields: [portalUserId], references: [id], onDelete: Cascade)
+
+  @@index([portalUserId, type])
+  @@map("portal_tokens")
 }
