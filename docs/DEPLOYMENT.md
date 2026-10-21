@@ -30,6 +30,10 @@ Copy `.env.example` to `.env` and fill it in. **Never commit `.env`.**
 | `STORAGE_BUCKET` | | Logical namespace for FileObject keys |
 | `STORAGE_PUBLIC_BASE_URL` | production | Public deployed backend `/files` base URL used for signed document URLs |
 | `SIGNED_URL_TTL_SECONDS` | | Default 900 |
+| `APP_URL` | production | Frontend origin; used to build links in verification and reset e-mails |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_SECURE` / `MAIL_FROM` | production | Outbound mail. Without `SMTP_HOST` mail is logged (development) and **production refuses to start sending** |
+| `BRAND_NAME` / `BRAND_COOKIE_PREFIX` / `BRAND_SUPPORT_EMAIL` | | White-label identity. Cookie prefix must match the frontend |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | | Optional billing. `rzp_test_` keys = test mode; unset = billing disabled (503) |
 | `SEED_*` | | Bootstrap only |
 | `SEED_DEMO_DATA` | | **Refused in production** |
 

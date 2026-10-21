@@ -13,6 +13,12 @@ deployable: it shares no code, build or deploy pipeline with the Next.js fronten
 | Docs | OpenAPI 3.0 at `/docs` |
 | Tests | Vitest + Supertest against a real PostgreSQL database |
 
+## Highlights
+
+- Multi-tenant studio CRM: leads (incl. Meta Lead Ads), clients, projects, shoots, freelancers, finance, galleries, RBAC and audit log.
+- Self-serve signup with tenant provisioning, e-mail verification and password reset.
+- API keys (SHA-256 hashed, read-only or full, revocable) and Razorpay billing in test mode.
+
 PostgreSQL is the only supported engine. There is no MySQL support, no dual-engine
 configuration, and no code path that targets anything else.
 
