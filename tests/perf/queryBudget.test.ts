@@ -41,7 +41,7 @@ describe('query budget (set PRISMA_COUNT_QUERIES=1)', () => {
       rows.push(`${String(queryStats.count).padStart(3)} / ${String(max).padEnd(3)} ${res.status} ${path}`);
       if (queryStats.count > max) over.push(`${path}: ${queryStats.count} > ${max}`);
     }
-    console.log('\nqueries/budget status path\n' + rows.join('\n'));
+    console.warn('\nqueries/budget status path\n' + rows.join('\n'));
     expect(over).toEqual([]);
   });
 });

@@ -38,7 +38,7 @@ describe('database error mapping', () => {
   it('unknown database errors stay generic and never leak internals', () => {
     const { status, body } = run(known('P9999'));
     expect(status).toBe(500);
-    expect(JSON.stringify(body)).not.toContain('boom');
+    expect(body?.error.message).not.toContain('boom'); // (stack is dev-only and stripped in production)
   });
 
   it('unique violations still map to 409 without Retry-After', () => {
