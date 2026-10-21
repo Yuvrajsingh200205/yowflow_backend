@@ -5,6 +5,7 @@ import { asyncHandler, auditContext, requireAuthContext } from '../utils/http';
 import { sendCreated, sendSuccess } from '../utils/response';
 import { unauthenticated } from '../utils/errors';
 import * as authService from '../services/portalAuth.service';
+import * as portal from '../services/portal.service';
 
 const cookieBase = () => ({
   httpOnly: true,
@@ -81,3 +82,27 @@ export const removeAccess = asyncHandler(async (req, res) => {
   await authService.removePortalUser(requireAuthContext(req), req.params.id, req.params.portalUserId, auditContext(req));
   return sendSuccess(res, { removed: true });
 });
+
+// ── Portal data ────────────────────────────────────────────────────────────
+const ctx = (req: Request) => requirePortalContext(req);
+
+export const listProjects = asyncHandler(async (req, res) => sendSuccess(res, await portal.listProjects(ctx(req))));
+export const getProject = asyncHandler(async (req, res) => sendSuccess(res, await portal.getProject(ctx(req), req.params.projectId)));
+export const getGallery = asyncHandler(async (req, res) => sendSuccess(res, await portal.getGallery(ctx(req), req.params.projectId)));
+export const listMedia = asyncHandler(async (req, res) => sendSuccess(res, await portal.listMedia(ctx(req), req.params.projectId, req.query as portal.MediaQuery)));
+export const getMedia = asyncHandler(async (req, res) => sendSuccess(res, await portal.getMedia(ctx(req), req.params.mediaId)));
+export const putSelection = asyncHandler(async (req, res) => sendSuccess(res, await portal.setSelection(ctx(req), req.params.mediaId, req.params.kind as 'FAVORITE' | 'ALBUM', true)));
+export const deleteSelection = asyncHandler(async (req, res) => sendSuccess(res, await portal.setSelection(ctx(req), req.params.mediaId, req.params.kind as 'FAVORITE' | 'ALBUM', false)));
+export const submitAlbum = asyncHandler(async (req, res) => sendCreated(res, await portal.submitAlbumSelection(ctx(req), req.params.projectId)));
+export const listProjectComments = asyncHandler(async (req, res) => sendSuccess(res, await portal.listComments(ctx(req), { projectId: req.params.projectId })));
+export const addMediaComment = asyncHandler(async (req, res) => sendCreated(res, await portal.addComment(ctx(req), { mediaId: req.params.mediaId, ...req.body })));
+export const addProjectComment = asyncHandler(async (req, res) => sendCreated(res, await portal.addComment(ctx(req), { projectId: req.params.projectId, ...req.body })));
+export const listRequests = asyncHandler(async (req, res) => sendSuccess(res, await portal.listRequests(ctx(req), req.params.projectId)));
+export const createRequest = asyncHandler(async (req, res) => sendCreated(res, await portal.createRequest(ctx(req), req.params.projectId, req.body)));
+export const listShareLinks = asyncHandler(async (req, res) => sendSuccess(res, await portal.listShareLinks(ctx(req), req.params.projectId)));
+export const createShareLink = asyncHandler(async (req, res) => sendCreated(res, await portal.createShareLink(ctx(req), req.params.projectId, req.body)));
+export const revokeShareLink = asyncHandler(async (req, res) => sendSuccess(res, await portal.revokeShareLink(ctx(req), req.params.projectId, req.params.linkId)));
+export const downloadMedia = asyncHandler(async (req, res) => sendSuccess(res, await portal.downloadMedia(ctx(req), req.params.mediaId)));
+export const listNotifications = asyncHandler(async (req, res) => sendSuccess(res, await portal.listNotifications(ctx(req), Number(req.query.limit ?? 30))));
+export const readNotification = asyncHandler(async (req, res) => sendSuccess(res, await portal.markNotificationRead(ctx(req), req.params.id)));
+export const readAllNotifications = asyncHandler(async (req, res) => sendSuccess(res, await portal.markAllNotificationsRead(ctx(req))));

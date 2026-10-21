@@ -5,6 +5,7 @@ import * as eventService from '../services/event.service';
 import * as shootService from '../services/shoot.service';
 import * as clientAssetService from '../services/projectClientAsset.service';
 import * as galleryMediaService from '../services/galleryMedia.service';
+import * as galleryAdmin from '../services/galleryAdmin.service';
 
 // --- Projects -------------------------------------------------------------
 
@@ -284,3 +285,21 @@ export const removeAssignment = asyncHandler(async (req, res) => {
   );
   return sendNoContent(res);
 });
+
+// --- Client portal management (staff side) ---------------------------------
+export const getGallerySettings = asyncHandler(async (req, res) => sendSuccess(res, await galleryAdmin.getGallerySettings(requireAuthContext(req), req.params.id)));
+export const updateGallery = asyncHandler(async (req, res) => sendSuccess(res, await galleryAdmin.updateGallery(requireAuthContext(req), req.params.id, req.body, auditContext(req))));
+export const createGallerySection = asyncHandler(async (req, res) => sendCreated(res, await galleryAdmin.createSection(requireAuthContext(req), req.params.id, req.body, auditContext(req))));
+export const updateGallerySection = asyncHandler(async (req, res) => sendSuccess(res, await galleryAdmin.updateSection(requireAuthContext(req), req.params.id, req.params.sectionId, req.body, auditContext(req))));
+export const deleteGallerySection = asyncHandler(async (req, res) => { await galleryAdmin.deleteSection(requireAuthContext(req), req.params.id, req.params.sectionId, auditContext(req)); return sendNoContent(res); });
+export const createGalleryFolder = asyncHandler(async (req, res) => sendCreated(res, await galleryAdmin.createSubFolder(requireAuthContext(req), req.params.id, req.params.sectionId, req.body, auditContext(req))));
+export const updateGalleryFolder = asyncHandler(async (req, res) => sendSuccess(res, await galleryAdmin.updateSubFolder(requireAuthContext(req), req.params.id, req.params.folderId, req.body)));
+export const deleteGalleryFolder = asyncHandler(async (req, res) => { await galleryAdmin.deleteSubFolder(requireAuthContext(req), req.params.id, req.params.folderId); return sendNoContent(res); });
+export const patchGalleryMedia = asyncHandler(async (req, res) => {
+  const { mediaIds, ...patch } = req.body;
+  return sendSuccess(res, await galleryAdmin.updateMedia(requireAuthContext(req), req.params.id, mediaIds, patch, auditContext(req)));
+});
+export const getClientActivity = asyncHandler(async (req, res) => sendSuccess(res, await galleryAdmin.getClientActivity(requireAuthContext(req), req.params.id)));
+export const respondToClientRequest = asyncHandler(async (req, res) => sendSuccess(res, await galleryAdmin.respondToRequest(requireAuthContext(req), req.params.id, req.params.requestId, req.body, auditContext(req))));
+export const replyToClientComment = asyncHandler(async (req, res) => sendCreated(res, await galleryAdmin.replyToComment(requireAuthContext(req), req.params.id, req.params.commentId, req.body.body, auditContext(req))));
+export const backfillGalleryDerivatives = asyncHandler(async (req, res) => sendSuccess(res, await galleryMediaService.backfillDerivatives(requireAuthContext(req), req.params.id)));

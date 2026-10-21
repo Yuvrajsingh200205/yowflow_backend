@@ -8,6 +8,7 @@ import { AuditRequestContext, recordAudit } from './audit.service';
 import { createUploadIntent, registerFile } from './file.service';
 import { createSignedUrl, getStorageProvider, localObjectPath } from './storage.service';
 import { scopedProjectWhere } from './project.service';
+import { generateImageDerivatives } from './derivative.service';
 import { hashPassword, verifyPassword } from '../utils/password';
 
 /**
@@ -21,7 +22,7 @@ const ENTITY_TYPE = 'GALLERY_MEDIA';
 /** Section every upload lands in unless the studio names one. */
 const DEFAULT_SECTION_NAME = 'Wedding Gallery';
 
-async function requireProject(auth: AuthContext, projectId: string) {
+export async function requireProject(auth: AuthContext, projectId: string) {
   // scopedProjectWhere applies the caller's project visibility, so this single
   // read is both the authorisation check and the lookup.
   const project = await prisma.project.findFirst({
@@ -38,7 +39,28 @@ const mediaTypeFor = (mimeType: string): GalleryMediaType =>
 const categoryFor = (mediaType: GalleryMediaType): GalleryMediaCategory =>
   mediaType === 'VIDEO' ? 'VIDEOS' : mediaType === 'DOCUMENT' ? 'DOCUMENTS' : 'PHOTOS';
 
-/** Shapes a media row for the portal, including a short-lived URL for the file. */
+/** Signed URLs for the small renditions; falls back to the original when none were generated. */
+export function presentVariants(media: {
+  file: { objectKey: string; bucket: string };
+  width?: number | null;
+  height?: number | null;
+  derivatives?: Array<{ kind: string; file: { objectKey: string; bucket: string } }>;
+}) {
+  const urlFor = (kind: string) => {
+    const d = media.derivatives?.find((x) => x.kind === kind);
+    return d ? createSignedUrl(d.file.objectKey, d.file.bucket).url : null;
+  };
+  const original = () => createSignedUrl(media.file.objectKey, media.file.bucket).url;
+  const preview = urlFor('PREVIEW');
+  return {
+    thumbUrl: urlFor('THUMBNAIL') ?? preview ?? original(),
+    previewUrl: preview ?? original(),
+    width: media.width ?? null,
+    height: media.height ?? null,
+  };
+}
+
+/** Shapes a media row for the studio, including a short-lived URL for the original file. */
 function present(media: {
   id: string;
   sectionId: string;
@@ -49,10 +71,14 @@ function present(media: {
   isClientVisible: boolean;
   isDownloadAllowed: boolean;
   createdAt: Date;
+  width?: number | null;
+  height?: number | null;
+  derivatives?: Array<{ kind: string; file: { objectKey: string; bucket: string } }>;
   section: { id: string; name: string };
   file: { objectKey: string; bucket: string; mimeType: string; sizeBytes: bigint; originalName: string };
 }) {
   return {
+    ...presentVariants(media),
     id: media.id,
     sectionId: media.sectionId,
     sectionName: media.section.name,
@@ -71,6 +97,7 @@ function present(media: {
 }
 
 const MEDIA_INCLUDE = {
+  derivatives: { select: { kind: true, file: { select: { objectKey: true, bucket: true } } } },
   section: { select: { id: true, name: true } },
   file: { select: { objectKey: true, bucket: true, mimeType: true, sizeBytes: true, originalName: true } },
 } as const;
@@ -181,7 +208,7 @@ export async function addGalleryMedia(
         organizationId: auth.organizationId,
         projectId,
         title: project.name ?? 'Wedding Gallery',
-        status: 'PUBLISHED',
+        status: 'DRAFT',
       },
       update: {},
       select: { id: true },
@@ -229,11 +256,35 @@ export async function addGalleryMedia(
         newData: { projectId, sectionName, originalName: input.originalName },
       });
 
-      return present(media);
+      return media;
     },
     // Headroom for a slow managed database rather than the 5s default.
     { timeout: 20_000, maxWait: 10_000 },
-  );
+  ).then(async (media) => {
+    // Thumbnails/previews are best-effort; the photograph is usable without them.
+    if (mediaType === 'IMAGE' && (await generateImageDerivatives(media.id)).generated > 0) {
+      const fresh = await prisma.galleryMedia.findUnique({ where: { id: media.id }, include: MEDIA_INCLUDE });
+      if (fresh) return present(fresh);
+    }
+    return present(media);
+  });
+}
+
+/** Generates thumbnails for photographs uploaded before derivatives existed (or whose generation failed). */
+export async function backfillDerivatives(auth: AuthContext, projectId: string, limit = 25) {
+  await requireProject(auth, projectId);
+  const pending = await prisma.galleryMedia.findMany({
+    where: { organizationId: auth.organizationId, gallery: { projectId }, deletedAt: null, mediaType: 'IMAGE', OR: [{ derivatives: { none: {} } }, { width: null }] },
+    select: { id: true },
+    take: Math.min(Math.max(limit, 1), 50),
+    orderBy: { createdAt: 'asc' },
+  });
+  let generated = 0;
+  for (const m of pending) generated += (await generateImageDerivatives(m.id)).generated;
+  const remaining = await prisma.galleryMedia.count({
+    where: { organizationId: auth.organizationId, gallery: { projectId }, deletedAt: null, mediaType: 'IMAGE', OR: [{ derivatives: { none: {} } }, { width: null }] },
+  });
+  return { processed: pending.length, generated, remaining };
 }
 
 export async function deleteGalleryMedia(
@@ -437,7 +488,7 @@ export async function openSharedGallery(token: string, password?: string) {
       deletedAt: null,
       isClientVisible: true,
       // A hidden section stays hidden however the link was configured.
-      section: { isVisibleToClient: true, deletedAt: null },
+      section: { isVisibleToClient: true, isShareAllowed: true, deletedAt: null },
       gallery: { shareLinks: { some: { id: link.id } } },
       ...(link.accessType === 'SELECTED_ONLY' ? { id: { in: selectedIds } } : {}),
       ...(link.accessType === 'SECTION_ONLY' && link.sectionId ? { sectionId: link.sectionId } : {}),
@@ -456,6 +507,11 @@ export async function openSharedGallery(token: string, password?: string) {
     accessType: link.accessType,
     watermarkEnabled: link.watermarkEnabled,
     downloadAllowed: link.accessType === 'VIEW_DOWNLOAD' || link.accessType === 'FULL_GALLERY',
-    media: media.map(present),
+    media: media.map((m) => {
+      const full = present(m);
+      const canDownload = (link.accessType === 'VIEW_DOWNLOAD' || link.accessType === 'FULL_GALLERY') && m.isDownloadAllowed;
+      // Viewers only get the original file when the link (and the media) allow downloading.
+      return { ...full, url: canDownload ? full.url : full.previewUrl };
+    }),
   };
 }

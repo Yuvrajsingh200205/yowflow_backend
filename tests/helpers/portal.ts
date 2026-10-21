@@ -1,4 +1,5 @@
-import { api, authed, base, login } from './api';
+import supertest from 'supertest';
+import { api, app, authed, base, login } from './api';
 import { seedTestOrganization, TestOrg } from './factory';
 import { outbox } from '../../src/services/mailer.service';
 
@@ -15,8 +16,8 @@ export interface PortalFixture {
 export const tokenFromMail = (m: { text: string }) => decodeURIComponent(/token=([^\s&]+)/.exec(m.text)![1]);
 
 /** A studio with one client and one project, ready to invite a couple. */
-export async function seedPortalStudio(email = 'couple@portal.test'): Promise<PortalFixture> {
-  const org = await seedTestOrganization();
+export async function seedPortalStudio(email = 'couple@portal.test', slug = 'test-studio'): Promise<PortalFixture> {
+  const org = await seedTestOrganization(slug);
   const staff = authed(await login(org.admin));
   const client = await staff.post(`${base}/clients`).send({ displayName: 'Aarav & Diya', primaryPhone: '9812345678', primaryEmail: email }).expect(201);
   const project = await staff.post(`${base}/projects`).send({
@@ -31,7 +32,7 @@ export async function signedInCouple(f: PortalFixture, fullName = 'Aarav Sharma'
   outbox.length = 0;
   await f.staff.post(`${base}/clients/${f.clientId}/portal-access`).send({ email: f.inviteEmail, fullName }).expect(201);
   const token = tokenFromMail(outbox[outbox.length - 1]);
-  const agent = (await import('supertest')).default.agent((await import('./api')).app);
+  const agent = supertest.agent(app);
   const res = await agent.post(`${base}/portal/auth/invite/${token}/accept`).send({ password: PORTAL_PASSWORD }).expect(200);
   return { agent, me: res.body.data };
 }

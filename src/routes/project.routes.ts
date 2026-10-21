@@ -4,6 +4,7 @@ import * as opsController from '../controllers/ops.controller';
 import { validate } from '../middleware/validate';
 import { requireAnyPermission, requirePermission } from '../middleware/rbac';
 import { idParam } from '../validators/common.validator';
+import * as pv from '../validators/portal.validator';
 import {
   assignCrewSchema,
   assignmentParams,
@@ -57,6 +58,19 @@ projectRouter.get('/:id/gallery', requirePermission('FILE_VIEW'), validate({ par
 projectRouter.post('/:id/gallery/upload-intent', requirePermission('FILE_UPLOAD'), validate({ params: idParam, body: galleryUploadIntentSchema }), controller.createGalleryUploadIntent);
 projectRouter.post('/:id/gallery/media', requirePermission('FILE_UPLOAD'), validate({ params: idParam, body: addGalleryMediaSchema }), controller.addGalleryMedia);
 projectRouter.delete('/:id/gallery/media/:mediaId', requirePermission('FILE_DELETE'), validate({ params: galleryMediaParams }), controller.deleteGalleryMedia);
+projectRouter.get('/:id/gallery/settings', requirePermission('FILE_VIEW'), validate({ params: idParam }), controller.getGallerySettings);
+projectRouter.patch('/:id/gallery', requirePermission('FILE_UPLOAD'), validate({ params: idParam, body: pv.galleryUpdateSchema }), controller.updateGallery);
+projectRouter.post('/:id/gallery/sections', requirePermission('FILE_UPLOAD'), validate({ params: idParam, body: pv.gallerySectionCreateSchema }), controller.createGallerySection);
+projectRouter.patch('/:id/gallery/sections/:sectionId', requirePermission('FILE_UPLOAD'), validate({ params: pv.gallerySectionParams, body: pv.gallerySectionUpdateSchema }), controller.updateGallerySection);
+projectRouter.delete('/:id/gallery/sections/:sectionId', requirePermission('FILE_DELETE'), validate({ params: pv.gallerySectionParams }), controller.deleteGallerySection);
+projectRouter.post('/:id/gallery/sections/:sectionId/folders', requirePermission('FILE_UPLOAD'), validate({ params: pv.gallerySectionParams, body: pv.galleryFolderCreateSchema }), controller.createGalleryFolder);
+projectRouter.patch('/:id/gallery/folders/:folderId', requirePermission('FILE_UPLOAD'), validate({ params: pv.galleryFolderParams, body: pv.galleryFolderUpdateSchema }), controller.updateGalleryFolder);
+projectRouter.delete('/:id/gallery/folders/:folderId', requirePermission('FILE_DELETE'), validate({ params: pv.galleryFolderParams }), controller.deleteGalleryFolder);
+projectRouter.patch('/:id/gallery/media', requirePermission('FILE_UPLOAD'), validate({ params: idParam, body: pv.galleryMediaPatchSchema }), controller.patchGalleryMedia);
+projectRouter.post('/:id/gallery/derivatives', requirePermission('FILE_UPLOAD'), validate({ params: idParam }), controller.backfillGalleryDerivatives);
+projectRouter.get('/:id/gallery/client-activity', requirePermission('FILE_VIEW'), validate({ params: idParam }), controller.getClientActivity);
+projectRouter.patch('/:id/gallery/requests/:requestId', requirePermission('FILE_UPLOAD'), validate({ params: pv.staffRequestParams, body: pv.staffRequestRespondSchema }), controller.respondToClientRequest);
+projectRouter.post('/:id/gallery/comments/:commentId/reply', requirePermission('FILE_UPLOAD'), validate({ params: pv.staffCommentParams, body: pv.staffCommentReplySchema }), controller.replyToClientComment);
 projectRouter.get('/:id/gallery/share-links', requirePermission('FILE_VIEW'), validate({ params: idParam }), controller.listShareLinks);
 projectRouter.post('/:id/gallery/share-links', requirePermission('FILE_UPLOAD'), validate({ params: idParam, body: createShareLinkSchema }), controller.createShareLink);
 projectRouter.delete('/:id/gallery/share-links/:linkId', requirePermission('FILE_UPLOAD'), validate({ params: shareLinkParams }), controller.revokeShareLink);

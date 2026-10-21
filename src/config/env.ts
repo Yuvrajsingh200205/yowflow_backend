@@ -94,6 +94,9 @@ const schema = z.object({
   META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
   META_GRAPH_API_VERSION: z.string().regex(/^v\d+\.\d+$/).default('v26.0'),
 
+  // Gallery thumbnails/previews: 'inline' generates them while registering an upload, 'off' disables.
+  GALLERY_DERIVATIVES: z.enum(['inline', 'off']).default('inline'),
+
   // Prisma connection pool. Defaults: 5 per serverless instance, 15 on a long-running server.
   DB_POOL_SIZE: z.coerce.number().int().min(1).max(100).optional(),
   DB_POOL_TIMEOUT_SECONDS: z.coerce.number().int().min(1).max(120).default(30),

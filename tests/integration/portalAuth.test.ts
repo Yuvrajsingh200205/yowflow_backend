@@ -51,7 +51,7 @@ describe('client portal authentication', () => {
     expect((await fresh.post(`${base}/portal/auth/login`).send({ email: f.inviteEmail, password: 'Wrong#Pass1234' })).status).toBe(401);
     const ok = await fresh.post(`${base}/portal/auth/login`).send({ email: f.inviteEmail.toUpperCase(), password: PORTAL_PASSWORD });
     expect(ok.status).toBe(200);
-    expect(ok.headers['set-cookie'].join(';')).toMatch(/yf_portal_access_token=.*HttpOnly/i);
+    expect((ok.headers['set-cookie'] as unknown as string[]).join(';')).toMatch(/yf_portal_access_token=.*HttpOnly/i);
 
     const before = (ok.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith('yf_portal_refresh_token'));
     const refreshed = await fresh.post(`${base}/portal/auth/refresh`).send({});
