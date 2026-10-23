@@ -330,6 +330,44 @@ enum QuotationStatus {
   CANCELLED
 }
 
+enum CatalogItemKind {
+  PACKAGE
+  ADDON
+}
+
+/// How a catalogue price scales: once, per event day, or per guest/plate.
+enum CatalogPricingType {
+  FIXED
+  PER_DAY
+  PER_PERSON
+}
+
+enum QuotationItemKind {
+  PACKAGE
+  ADDON
+  CUSTOM
+}
+
+enum EnquiryQuoteMode {
+  OFF
+  APPROVAL
+  AUTO
+}
+
+enum QuotationEventType {
+  CREATED
+  APPROVED
+  SENT
+  VIEWED
+  REVISED
+  ACCEPTED
+  DECLINED
+  MESSAGE_RECEIVED
+  REMINDER_SENT
+  EXPIRED
+  BOOKED
+}
+
 enum InvoiceStatus {
   DRAFT
   SENT
@@ -635,6 +673,11 @@ model Organization {
   tasks            Task[]
   deliveries       Delivery[]
   quotations       Quotation[]
+  catalogItems     CatalogItem[]
+  enquiryPage      EnquiryPage?
+  blockedDates     BlockedDate[]
+  quotationEvents  QuotationEvent[]
+  reminderLogs     ReminderLog[]
   invoices         Invoice[]
   payments         Payment[]
   expenseCategories ExpenseCategory[]
@@ -1055,6 +1098,8 @@ model Lead {
   eventType      ProjectType? @map("event_type")
   eventDate      DateTime?  @map("event_date") @db.Date
   venueCity      String?    @map("venue_city") @db.VarChar(80)
+  guestCount     Int?       @map("guest_count")
+  interestedPackageId String? @map("interested_package_id") @db.Uuid
   status         LeadStatus @default(NEW)
   estimatedValue Decimal    @default(0) @map("estimated_value") @db.Decimal(14, 2)
   ownerId        String?    @map("owner_id") @db.Uuid
@@ -1077,11 +1122,13 @@ model Lead {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   source       LeadSource?  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
   client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  interestedPackage CatalogItem? @relation("LeadInterestedPackage", fields: [interestedPackageId], references: [id], onDelete: SetNull)
   owner        User?        @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   createdBy    User?        @relation("LeadCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   followUps LeadFollowUp[]
   projects  Project[]
+  quotations Quotation[]
 
   @@index([organizationId, status])
   @@index([organizationId, nextFollowUpAt])
@@ -2057,7 +2104,9 @@ model Quotation {
   organizationId  String          @map("organization_id") @db.Uuid
   quotationNumber String          @map("quotation_number") @db.VarChar(32)
   projectId       String?         @map("project_id") @db.Uuid
-  clientId        String          @map("client_id") @db.Uuid
+  /// Null until the enquiry becomes a booking: a quote can be sent to a lead who is not a client yet.
+  clientId        String?         @map("client_id") @db.Uuid
+  leadId          String?         @map("lead_id") @db.Uuid
   issueDate       DateTime        @map("issue_date") @db.Date
   validUntil      DateTime?       @map("valid_until") @db.Date
   subtotal        Decimal         @default(0) @db.Decimal(14, 2)
@@ -2069,6 +2118,38 @@ model Quotation {
   termsAndConditions String?      @map("terms_and_conditions") @db.Text
   createdById     String?         @map("created_by_id") @db.Uuid
   acceptedAt      DateTime?       @map("accepted_at") @db.Timestamptz(6)
+
+  // What the quote is for (copied from the enquiry so the quote stands on its own)
+  customerName    String?         @map("customer_name") @db.VarChar(160)
+  customerPhone   String?         @map("customer_phone") @db.VarChar(32)
+  customerEmail   String?         @map("customer_email") @db.VarChar(160)
+  eventType       ProjectType?    @map("event_type")
+  eventDate       DateTime?       @map("event_date") @db.Date
+  eventDays       Int             @default(1) @map("event_days")
+  guestCount      Int?            @map("guest_count")
+  venueName       String?         @map("venue_name") @db.VarChar(200)
+  venueCity       String?         @map("venue_city") @db.VarChar(80)
+
+  // Payment plan offered with the quote
+  advancePercent  Int?            @map("advance_percent")
+  balanceDueDaysBefore Int?       @map("balance_due_days_before")
+
+  // Sharing and tracking
+  publicToken     String?         @unique @map("public_token") @db.VarChar(64)
+  sentAt          DateTime?       @map("sent_at") @db.Timestamptz(6)
+  sentVia         String?         @map("sent_via") @db.VarChar(20)
+  firstViewedAt   DateTime?       @map("first_viewed_at") @db.Timestamptz(6)
+  lastViewedAt    DateTime?       @map("last_viewed_at") @db.Timestamptz(6)
+  viewCount       Int             @default(0) @map("view_count")
+  declinedAt      DateTime?       @map("declined_at") @db.Timestamptz(6)
+  declineReason   String?         @map("decline_reason") @db.VarChar(500)
+  acceptedByName  String?         @map("accepted_by_name") @db.VarChar(160)
+  acceptedIp      String?         @map("accepted_ip") @db.VarChar(64)
+  acceptedUserAgent String?       @map("accepted_user_agent") @db.VarChar(512)
+  autoGenerated   Boolean         @default(false) @map("auto_generated")
+  /// Created from an enquiry in "approval" mode: waits for the studio to review before the client sees it.
+  needsReview     Boolean         @default(false) @map("needs_review")
+
   createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt       DateTime?       @map("deleted_at") @db.Timestamptz(6)
@@ -2076,15 +2157,19 @@ model Quotation {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  client       Client       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  lead         Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
   createdBy    User?        @relation("QuotationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
-  items QuotationItem[]
+  items  QuotationItem[]
+  events QuotationEvent[]
 
   @@unique([organizationId, quotationNumber])
   @@index([projectId])
   @@index([clientId])
+  @@index([leadId])
   @@index([organizationId, status])
+  @@index([organizationId, status, validUntil])
   @@index([issueDate])
   @@map("quotations")
 }
@@ -2101,12 +2186,28 @@ model QuotationItem {
   taxAmount      Decimal  @default(0) @map("tax_amount") @db.Decimal(14, 2)
   lineTotal      Decimal  @map("line_total") @db.Decimal(14, 2)
   sortOrder      Int      @default(0) @map("sort_order")
+
+  kind           QuotationItemKind  @default(CUSTOM)
+  /// What the line includes (a package's bullet list), copied from the catalogue when the quote is made.
+  inclusions     String[] @default([])
+  catalogItemId  String?  @map("catalog_item_id") @db.Uuid
+  /// Optional lines (add-ons) that the client can switch on or off before accepting.
+  isOptional     Boolean  @default(false) @map("is_optional")
+  isSelected     Boolean  @default(true) @map("is_selected")
+  pricingType    CatalogPricingType @default(FIXED) @map("pricing_type")
+  unitLabel      String?  @map("unit_label") @db.VarChar(30)
+  allowQuantity  Boolean  @default(false) @map("allow_quantity")
+  minQuantity    Int      @default(1) @map("min_quantity")
+  maxQuantity    Int?     @map("max_quantity")
+
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  quotation   Quotation   @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  catalogItem CatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
 
   @@index([quotationId])
+  @@index([catalogItemId])
   @@map("quotation_items")
 }
 
@@ -2587,6 +2688,30 @@ model OrganizationSetting {
   organizationId String   @unique @map("organization_id") @db.Uuid
   logoUrl        String?  @map("logo_url") @db.VarChar(500)
   dateFormat     String?  @map("date_format") @db.VarChar(32)
+
+  // Business details printed on quotes and invoices
+  upiId              String? @map("upi_id") @db.VarChar(120)
+  bankAccountName    String? @map("bank_account_name") @db.VarChar(160)
+  bankName           String? @map("bank_name") @db.VarChar(120)
+  bankAccountNumber  String? @map("bank_account_number") @db.VarChar(40)
+  bankIfsc           String? @map("bank_ifsc") @db.VarChar(16)
+  defaultTerms       String? @map("default_terms") @db.Text
+  brandColor         String? @map("brand_color") @db.VarChar(7)
+
+  // Sales defaults used when a quote is created
+  quoteValidDays        Int @default(7) @map("quote_valid_days")
+  advancePercent        Int @default(30) @map("advance_percent")
+  balanceDueDaysBefore  Int @default(7) @map("balance_due_days_before")
+
+  // Availability: how many events the studio can cover on one day
+  capacityPerDay  Int @default(1) @map("capacity_per_day")
+  minLeadDays     Int @default(0) @map("min_lead_days")
+  maxAdvanceDays  Int @default(730) @map("max_advance_days")
+
+  // Automatic reminders (payments, quotes)
+  remindersEnabled      Boolean @default(true) @map("reminders_enabled")
+  remindersEmailClients Boolean @default(true) @map("reminders_email_clients")
+
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -3110,4 +3235,121 @@ model PortalToken {
 
   @@index([portalUserId, type])
   @@map("portal_tokens")
+}
+
+
+/// A service package or add-on the studio sells. Quotes are assembled from these.
+model CatalogItem {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  kind           CatalogItemKind
+  name           String             @db.VarChar(160)
+  description    String?            @db.Text
+  category       String?            @db.VarChar(60)
+  /// What the package includes, one bullet per entry.
+  inclusions     String[]           @default([])
+  pricingType    CatalogPricingType @default(FIXED) @map("pricing_type")
+  unitPrice      Decimal            @default(0) @map("unit_price") @db.Decimal(14, 2)
+  unitLabel      String?            @map("unit_label") @db.VarChar(30)
+  taxRate        Decimal            @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  allowQuantity  Boolean            @default(false) @map("allow_quantity")
+  minQuantity    Int                @default(1) @map("min_quantity")
+  maxQuantity    Int?               @map("max_quantity")
+  /// Event types this applies to; empty means all.
+  eventTypes     ProjectType[]      @default([]) @map("event_types")
+  isActive       Boolean            @default(true) @map("is_active")
+  /// Shown on the public enquiry page.
+  isPublic       Boolean            @default(true) @map("is_public")
+  isPopular      Boolean            @default(false) @map("is_popular")
+  sortOrder      Int                @default(0) @map("sort_order")
+  createdById    String?            @map("created_by_id") @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?          @map("deleted_at") @db.Timestamptz(6)
+  deletedBy      String?            @map("deleted_by") @db.Uuid
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  quotationItems QuotationItem[]
+  interestedLeads Lead[]        @relation("LeadInterestedPackage")
+
+  @@index([organizationId, kind, isActive])
+  @@index([organizationId, sortOrder])
+  @@map("catalog_items")
+}
+
+/// The studio's public enquiry page (`/enquire/<organization slug>`).
+model EnquiryPage {
+  id              String           @id @default(uuid()) @db.Uuid
+  organizationId  String           @unique @map("organization_id") @db.Uuid
+  isEnabled       Boolean          @default(false) @map("is_enabled")
+  headline        String?          @db.VarChar(160)
+  intro           String?          @db.Text
+  thankYouMessage String?          @map("thank_you_message") @db.Text
+  autoQuoteMode   EnquiryQuoteMode @default(APPROVAL) @map("auto_quote_mode")
+  showPrices      Boolean          @default(true) @map("show_prices")
+  askGuestCount   Boolean          @default(false) @map("ask_guest_count")
+  askVenue        Boolean          @default(true) @map("ask_venue")
+  /// Event types offered on the form; empty means the standard set.
+  eventTypes      ProjectType[]    @default([]) @map("event_types")
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("enquiry_pages")
+}
+
+/// Dates the studio cannot take (holidays, own events, maintenance).
+model BlockedDate {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  startDate      DateTime @map("start_date") @db.Date
+  endDate        DateTime @map("end_date") @db.Date
+  reason         String?  @db.VarChar(200)
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, startDate, endDate])
+  @@map("blocked_dates")
+}
+
+/// What happened to a quote and when: the timeline staff see on the quote.
+model QuotationEvent {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  quotationId    String             @map("quotation_id") @db.Uuid
+  type           QuotationEventType
+  /// STAFF, CLIENT or SYSTEM.
+  actorType      String             @default("SYSTEM") @map("actor_type") @db.VarChar(10)
+  actorId        String?            @map("actor_id") @db.Uuid
+  meta           Json?              @db.JsonB
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quotation    Quotation    @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@index([quotationId, createdAt])
+  @@index([organizationId, createdAt])
+  @@map("quotation_events")
+}
+
+/// Remembers which reminders were already sent so a daily job never repeats one.
+model ReminderLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  kind           String   @db.VarChar(40)
+  entityType     String   @map("entity_type") @db.VarChar(40)
+  entityId       String   @map("entity_id") @db.Uuid
+  channel        String   @db.VarChar(20)
+  dedupeKey      String   @unique @map("dedupe_key") @db.VarChar(200)
+  meta           Json?    @db.JsonB
+  sentAt         DateTime @default(now()) @map("sent_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, sentAt])
+  @@map("reminder_logs")
 }

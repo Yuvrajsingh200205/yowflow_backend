@@ -8,6 +8,8 @@ import { apiKeyRouter, billingRouter } from './billing.routes';
 import freelancerPortalRoutes from './freelancerPortal.routes';
 import { metaIntegrationRouter } from './integration.routes';
 import { clientRouter, leadRouter } from './crm.routes';
+import { catalogRouter, salesSetupRouter } from './sales.routes';
+import { cronReminders } from '../controllers/sales.controller';
 import { dashboardRouter } from './dashboard.routes';
 import { settingsWorkspaceRouter } from './settings.routes';
 import { eventRouter, projectRouter, shootRouter } from './project.routes';
@@ -33,6 +35,9 @@ const router = Router();
 // Public (rate-limited) authentication surface.
 router.use('/auth', authRoutes);
 router.use('/public', publicRoutes);
+// Scheduled job: guarded by CRON_SECRET (Vercel Cron sends it as a bearer token); disabled when unset.
+router.get('/internal/cron/reminders', cronReminders);
+router.post('/internal/cron/reminders', cronReminders);
 router.use('/portal', portalRouter);
 router.use('/freelancer-portal', freelancerPortalRoutes);
 router.use('/integrations/meta', metaIntegrationRouter);
@@ -68,6 +73,8 @@ router.use('/attendance', attendanceRouter);
 router.use('/deliveries', deliveryRouter);
 
 router.use('/quotations', quotationRouter);
+router.use('/catalog', catalogRouter);
+router.use('/sales-setup', salesSetupRouter);
 router.use('/invoices', invoiceRouter);
 router.use('/payments', paymentRouter);
 router.use('/expenses', expenseRouter);

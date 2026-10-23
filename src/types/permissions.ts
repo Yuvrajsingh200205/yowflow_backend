@@ -148,6 +148,13 @@ export const PERMISSIONS: PermissionDefinition[] = [
     ['QUOTATION_UPDATE', 'Update quotation', true],
     ['QUOTATION_DELETE', 'Delete quotation', true],
   ]),
+  ...define('catalog', [
+    ['CATALOG_VIEW', 'View service packages and pricing'],
+    ['CATALOG_MANAGE', 'Manage service packages and pricing', true],
+  ]),
+  ...define('booking_setup', [
+    ['BOOKING_SETUP_MANAGE', 'Manage the enquiry page, availability, business details and reminders', true],
+  ]),
   ...define('invoice', [
     ['INVOICE_VIEW', 'View invoices', true],
     ['INVOICE_CREATE', 'Create invoice', true],

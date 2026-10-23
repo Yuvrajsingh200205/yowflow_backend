@@ -41,11 +41,14 @@ export const quotationListQuery = listQuery.extend({
   status: QUOTATION_STATUS.optional(),
   clientId: uuid.optional(),
   projectId: uuid.optional(),
+  leadId: uuid.optional(),
+  needsReview: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
 });
 
 export const createQuotationSchema = z
   .object({
-    clientId: uuid,
+    clientId: uuid.optional(),
+    leadId: uuid.optional(),
     projectId: uuid.optional(),
     issueDate: dateOnly,
     validUntil: dateOnly.optional(),
@@ -57,7 +60,8 @@ export const createQuotationSchema = z
   .refine((v) => !v.validUntil || v.validUntil >= v.issueDate, {
     message: 'validUntil cannot be earlier than issueDate',
     path: ['validUntil'],
-  });
+  })
+  .refine((v) => v.clientId || v.leadId, { message: 'Choose a client or a lead', path: ['clientId'] });
 
 export const quotationStatusSchema = z.object({ status: QUOTATION_STATUS });
 

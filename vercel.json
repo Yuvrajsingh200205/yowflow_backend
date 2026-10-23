@@ -2,7 +2,7 @@
   "buildCommand": "npx prisma generate",
   "functions": {
     "api/index.ts": {
-      "includeFiles": "node_modules/.prisma/client/**",
+      "includeFiles": "{node_modules/.prisma/client/**,assets/fonts/**}",
       "maxDuration": 30
     }
   },
@@ -14,5 +14,11 @@
   ],
   "regions": [
     "sin1"
+  ],
+  "crons": [
+    {
+      "path": "/api/v1/internal/cron/reminders",
+      "schedule": "30 3 * * *"
+    }
   ]
 }

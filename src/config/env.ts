@@ -112,6 +112,8 @@ const schema = z.object({
   MAIL_FROM: z.string().default('Yowflow <no-reply@yowflow.com>'),
 
   // Billing (Razorpay). Use rzp_test_ keys for test mode. Unset = billing disabled.
+  /** Shared secret for the scheduled reminder job (Vercel Cron sends it as a bearer token). Unset disables the endpoint. */
+  CRON_SECRET: z.string().min(16).optional(),
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
 

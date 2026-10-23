@@ -3,7 +3,9 @@ import * as controller from '../controllers/finance.controller';
 import { validate } from '../middleware/validate';
 import { requirePermission } from '../middleware/rbac';
 import { idempotent } from '../middleware/idempotency';
+import * as salesController from '../controllers/sales.controller';
 import { idParam } from '../validators/common.validator';
+import { quoteConvertSchema, quoteFromLeadSchema, quoteSendSchema, quoteUpdateSchema } from '../validators/sales.validator';
 import {
   allocatePaymentSchema,
   createExpenseSchema,
@@ -40,12 +42,21 @@ quotationRouter.post(
   validate({ body: createQuotationSchema }),
   controller.createQuotation,
 );
+// Fixed paths first, so they are never read as an id.
+quotationRouter.get('/today', requirePermission('QUOTATION_VIEW'), salesController.todayList);
+quotationRouter.post('/from-lead', requirePermission('QUOTATION_CREATE'), validate({ body: quoteFromLeadSchema }), salesController.quoteFromLead);
 quotationRouter.get(
   '/:id',
   requirePermission('QUOTATION_VIEW'),
   validate({ params: idParam }),
   controller.getQuotation,
 );
+quotationRouter.patch('/:id', requirePermission('QUOTATION_UPDATE'), validate({ params: idParam, body: quoteUpdateSchema }), salesController.updateQuote);
+quotationRouter.post('/:id/send', requirePermission('QUOTATION_UPDATE'), validate({ params: idParam, body: quoteSendSchema }), salesController.sendQuote);
+quotationRouter.post('/:id/convert', requirePermission('QUOTATION_UPDATE'), validate({ params: idParam, body: quoteConvertSchema }), salesController.convertQuote);
+quotationRouter.get('/:id/events', requirePermission('QUOTATION_VIEW'), validate({ params: idParam }), salesController.quoteEvents);
+quotationRouter.get('/:id/preview', requirePermission('QUOTATION_VIEW'), validate({ params: idParam }), salesController.quotePreview);
+quotationRouter.get('/:id/pdf', requirePermission('QUOTATION_VIEW'), validate({ params: idParam }), salesController.quotePdf);
 quotationRouter.patch(
   '/:id/status',
   requirePermission('QUOTATION_UPDATE'),
@@ -60,6 +71,8 @@ quotationRouter.delete(
 );
 
 export const invoiceRouter = Router();
+
+invoiceRouter.get('/:id/pdf', requirePermission('INVOICE_VIEW'), validate({ params: idParam }), salesController.invoicePdf);
 
 invoiceRouter.get(
   '/',
