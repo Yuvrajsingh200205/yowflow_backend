@@ -241,6 +241,13 @@ export const galleryUploadIntentSchema = z.object({
   originalName: z.string().trim().min(1).max(255),
   mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'video/mp4', 'video/quicktime', 'video/webm']),
 });
+export const galleryMultipartInitSchema = galleryUploadIntentSchema.extend({ sizeBytes: z.coerce.number().int().min(1).max(5 * 1024 * 1024 * 1024) });
+export const galleryMultipartCompleteSchema = z.object({
+  objectKey: z.string().trim().min(1).max(512),
+  uploadId: z.string().trim().min(1).max(1024),
+  parts: z.array(z.object({ partNumber: z.coerce.number().int().min(1).max(10000), etag: z.string().min(1).max(200) })).min(1).max(10000),
+});
+export const galleryMultipartAbortSchema = z.object({ objectKey: z.string().trim().min(1).max(512), uploadId: z.string().trim().min(1).max(1024) });
 export const shareLinkParams = z.object({ id: uuid, linkId: uuid });
 export const createShareLinkSchema = z.object({
   title: z.string().trim().min(1).max(200),
@@ -258,7 +265,7 @@ export const sharedGalleryQuery = z.object({ password: z.string().max(128).optio
 export const addGalleryMediaSchema = galleryUploadIntentSchema.extend({
   bucket: z.string().trim().min(1).max(120),
   objectKey: z.string().trim().min(1).max(512),
-  sizeBytes: z.coerce.number().int().min(1).max(50 * 1024 * 1024),
+  sizeBytes: z.coerce.number().int().min(1).max(5 * 1024 * 1024 * 1024),
   title: z.string().trim().max(255).optional(),
   sectionName: z.string().trim().max(160).optional(),
 });

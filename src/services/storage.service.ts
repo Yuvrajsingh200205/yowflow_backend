@@ -83,7 +83,9 @@ function rfc3986(value: string): string {
 const encodePath = (path: string) => path.split('/').map(rfc3986).join('/');
 
 export interface PresignInput {
-  method: 'GET' | 'PUT';
+  method: 'GET' | 'PUT' | 'POST' | 'DELETE';
+  /** Extra query parameters that belong to the request and so must be signed (multipart: uploads, uploadId, partNumber). */
+  query?: Record<string, string>;
   host: string;
   /** Already-encoded absolute path, e.g. `/bucket/object%20key.jpg`. */
   canonicalUri: string;
@@ -108,6 +110,7 @@ export function presignS3Url(input: PresignInput): string {
     ['X-Amz-Date', amzDate],
     ['X-Amz-Expires', String(input.expiresIn)],
     ['X-Amz-SignedHeaders', 'host'],
+    ...Object.entries(input.query ?? {}),
   ]);
   const canonicalQuery = [...query.entries()]
     .map(([k, v]) => [rfc3986(k), rfc3986(v)] as const)
@@ -188,4 +191,41 @@ export function localObjectPath(objectKey: string): string | null {
   const root = path.resolve(process.cwd(), '.local-storage');
   const target = path.resolve(root, objectKey);
   return target.startsWith(`${root}${path.sep}`) ? target : null;
+}
+
+// ---------------------------------------------------------------------------
+// Multipart uploads (S3-compatible providers only). A film of several gigabytes cannot travel as one PUT,
+// so the browser sends it in parts straight to the provider; this process only starts and finishes the upload.
+// ---------------------------------------------------------------------------
+
+export const supportsMultipart = () => ['S3', 'R2', 'SUPABASE'].includes(getStorageProvider());
+
+const presignedCall = (method: 'POST' | 'DELETE' | 'PUT', objectKey: string, bucket: string, query: Record<string, string>) =>
+  presignS3Url({ ...s3Target(objectKey, bucket), method, query, expiresIn: env.SIGNED_URL_TTL_SECONDS });
+
+async function providerCall(url: string, init: RequestInit): Promise<string> {
+  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(20_000) });
+  const text = await res.text();
+  // S3 can answer 200 with an <Error> document when completing a multipart upload.
+  if (!res.ok || /<Error>/.test(text)) throw new Error(`Storage provider rejected the request (${res.status})`);
+  return text;
+}
+
+export async function createMultipartUpload(objectKey: string, bucket: string, contentType: string): Promise<string> {
+  const xml = await providerCall(presignedCall('POST', objectKey, bucket, { uploads: '' }), { method: 'POST', headers: { 'content-type': contentType } });
+  const id = /<UploadId>([^<]+)<\/UploadId>/.exec(xml)?.[1];
+  if (!id) throw new Error('Storage provider did not return an upload id');
+  return id;
+}
+
+export const presignPartUrl = (objectKey: string, bucket: string, uploadId: string, partNumber: number) =>
+  presignedCall('PUT', objectKey, bucket, { partNumber: String(partNumber), uploadId });
+
+export async function completeMultipartUpload(objectKey: string, bucket: string, uploadId: string, parts: Array<{ partNumber: number; etag: string }>) {
+  const body = `<CompleteMultipartUpload>${[...parts].sort((a, b) => a.partNumber - b.partNumber).map((p) => `<Part><PartNumber>${p.partNumber}</PartNumber><ETag>${p.etag.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</ETag></Part>`).join('')}</CompleteMultipartUpload>`;
+  await providerCall(presignedCall('POST', objectKey, bucket, { uploadId }), { method: 'POST', headers: { 'content-type': 'application/xml' }, body });
+}
+
+export async function abortMultipartUpload(objectKey: string, bucket: string, uploadId: string) {
+  await providerCall(presignedCall('DELETE', objectKey, bucket, { uploadId }), { method: 'DELETE' }).catch(() => undefined);
 }

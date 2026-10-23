@@ -5,6 +5,7 @@ import { validate } from '../middleware/validate';
 import { requireAnyPermission, requirePermission } from '../middleware/rbac';
 import { idParam } from '../validators/common.validator';
 import * as pv from '../validators/portal.validator';
+import * as projectValidators from '../validators/project.validator';
 import {
   assignCrewSchema,
   assignmentParams,
@@ -56,6 +57,9 @@ projectRouter.patch('/:id/client-assets/:assetId', requirePermission('FILE_UPLOA
 projectRouter.delete('/:id/client-assets/:assetId', requirePermission('FILE_DELETE'), validate({ params: projectClientAssetParams }), controller.deleteClientAsset);
 projectRouter.get('/:id/gallery', requirePermission('FILE_VIEW'), validate({ params: idParam }), controller.getGallery);
 projectRouter.post('/:id/gallery/upload-intent', requirePermission('FILE_UPLOAD'), validate({ params: idParam, body: galleryUploadIntentSchema }), controller.createGalleryUploadIntent);
+projectRouter.post('/:id/gallery/multipart/init', requirePermission('FILE_UPLOAD'), validate({ params: idParam, body: projectValidators.galleryMultipartInitSchema }), controller.startGalleryMultipart);
+projectRouter.post('/:id/gallery/multipart/complete', requirePermission('FILE_UPLOAD'), validate({ params: idParam, body: projectValidators.galleryMultipartCompleteSchema }), controller.finishGalleryMultipart);
+projectRouter.post('/:id/gallery/multipart/abort', requirePermission('FILE_UPLOAD'), validate({ params: idParam, body: projectValidators.galleryMultipartAbortSchema }), controller.cancelGalleryMultipart);
 projectRouter.post('/:id/gallery/media', requirePermission('FILE_UPLOAD'), validate({ params: idParam, body: addGalleryMediaSchema }), controller.addGalleryMedia);
 projectRouter.delete('/:id/gallery/media/:mediaId', requirePermission('FILE_DELETE'), validate({ params: galleryMediaParams }), controller.deleteGalleryMedia);
 projectRouter.get('/:id/gallery/settings', requirePermission('FILE_VIEW'), validate({ params: idParam }), controller.getGallerySettings);

@@ -2,11 +2,13 @@ import { GalleryMediaCategory, GalleryMediaType } from '@prisma/client';
 import crypto from 'crypto';
 import { promises as fs } from 'fs';
 import { prisma } from '../config/prisma';
-import { forbidden, notFound, unauthenticated } from '../utils/errors';
+import { env } from '../config/env';
+import { badRequest, forbidden, notFound, serviceUnavailable, unauthenticated } from '../utils/errors';
 import { AuthContext } from '../types';
 import { AuditRequestContext, recordAudit } from './audit.service';
 import { createUploadIntent, registerFile } from './file.service';
-import { createSignedUrl, getStorageProvider, localObjectPath } from './storage.service';
+import { abortMultipartUpload, completeMultipartUpload, createMultipartUpload, createSignedUrl, getStorageProvider, localObjectPath, presignPartUrl, supportsMultipart } from './storage.service';
+import { buildObjectKey } from './storage.service';
 import { scopedProjectWhere } from './project.service';
 import { generateImageDerivatives } from './derivative.service';
 import { hashPassword, verifyPassword } from '../utils/password';
@@ -520,4 +522,48 @@ export async function openSharedGallery(token: string, password?: string) {
       return { ...full, url: canDownload ? full.url : full.previewUrl };
     }),
   };
+}
+
+// ── Large films: multipart upload ───────────────────────────────────────────
+const MIB = 1024 * 1024;
+const MULTIPART_ENTITY = 'GALLERY_MEDIA';
+const MULTIPART_MAX_PARTS = 9000;
+
+/** Begins a multipart upload and hands the browser one signed URL per part. */
+export async function startMultipartUpload(auth: AuthContext, projectId: string, input: { originalName: string; mimeType: string; sizeBytes: number }) {
+  await requireProject(auth, projectId);
+  if (!supportsMultipart()) throw serviceUnavailable('Files over 50 MB need cloud storage (R2 or S3), which is not set up on this deployment.');
+  const objectKey = buildObjectKey(auth.organizationId, MULTIPART_ENTITY, input.originalName);
+  const bucket = env.STORAGE_BUCKET;
+  const uploadId = await createMultipartUpload(objectKey, bucket, input.mimeType);
+  const partSize = Math.max(16 * MIB, Math.ceil(input.sizeBytes / MULTIPART_MAX_PARTS / MIB) * MIB);
+  const count = Math.ceil(input.sizeBytes / partSize);
+  return {
+    bucket, objectKey, uploadId, partSize,
+    parts: Array.from({ length: count }, (_, i) => ({ partNumber: i + 1, url: presignPartUrl(objectKey, bucket, uploadId, i + 1) })),
+  };
+}
+
+const ownKey = (auth: AuthContext, objectKey: string) => {
+  // A caller may only finish or cancel uploads this studio started.
+  if (!objectKey.startsWith(`${auth.organizationId}/${MULTIPART_ENTITY.toLowerCase()}/`)) throw badRequest('That upload does not belong to this studio.');
+};
+
+export async function finishMultipartUpload(auth: AuthContext, projectId: string, input: { objectKey: string; uploadId: string; parts: Array<{ partNumber: number; etag: string }> }) {
+  await requireProject(auth, projectId);
+  ownKey(auth, input.objectKey);
+  if (!supportsMultipart()) throw serviceUnavailable('Cloud storage is not set up on this deployment.');
+  try {
+    await completeMultipartUpload(input.objectKey, env.STORAGE_BUCKET, input.uploadId, input.parts);
+  } catch {
+    throw badRequest('The upload could not be completed. Please try the file again.');
+  }
+  return { bucket: env.STORAGE_BUCKET, objectKey: input.objectKey };
+}
+
+export async function cancelMultipartUpload(auth: AuthContext, projectId: string, input: { objectKey: string; uploadId: string }) {
+  await requireProject(auth, projectId);
+  ownKey(auth, input.objectKey);
+  if (supportsMultipart()) await abortMultipartUpload(input.objectKey, env.STORAGE_BUCKET, input.uploadId);
+  return { aborted: true };
 }

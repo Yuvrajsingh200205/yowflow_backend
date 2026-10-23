@@ -303,3 +303,7 @@ export const getClientActivity = asyncHandler(async (req, res) => sendSuccess(re
 export const respondToClientRequest = asyncHandler(async (req, res) => sendSuccess(res, await galleryAdmin.respondToRequest(requireAuthContext(req), req.params.id, req.params.requestId, req.body, auditContext(req))));
 export const replyToClientComment = asyncHandler(async (req, res) => sendCreated(res, await galleryAdmin.replyToComment(requireAuthContext(req), req.params.id, req.params.commentId, req.body.body, auditContext(req))));
 export const backfillGalleryDerivatives = asyncHandler(async (req, res) => sendSuccess(res, await galleryMediaService.backfillDerivatives(requireAuthContext(req), req.params.id)));
+
+export const startGalleryMultipart = asyncHandler(async (req, res) => sendSuccess(res, await galleryMediaService.startMultipartUpload(requireAuthContext(req), req.params.id, req.body)));
+export const finishGalleryMultipart = asyncHandler(async (req, res) => sendSuccess(res, await galleryMediaService.finishMultipartUpload(requireAuthContext(req), req.params.id, req.body)));
+export const cancelGalleryMultipart = asyncHandler(async (req, res) => sendSuccess(res, await galleryMediaService.cancelMultipartUpload(requireAuthContext(req), req.params.id, req.body)));
