@@ -235,6 +235,28 @@ describe('authentication', () => {
     expect(after.status).toBe(401);
   });
 
+  it('signs out with only the refresh cookie (expired access token), clears everything and revokes the session', async () => {
+    const loginResponse = await api().post(`${base}/auth/login`).send({ email: org.admin.email, password: org.admin.password });
+    const all = cookieHeader(setCookies(loginResponse));
+    const refreshOnly = all.split('; ').filter((c) => c.startsWith('yf_refresh_token=')).join('; ');
+
+    const logout = await api().post(`${base}/auth/logout`).set('Cookie', refreshOnly);
+    expect(logout.status).toBe(200);
+    const cleared = setCookies(logout);
+    expect(cookieFor(cleared, 'yf_refresh_token')).toMatch(/yf_refresh_token=;/);
+    expect(cookieFor(cleared, 'yf_access_token')).toMatch(/yf_access_token=;/);
+
+    // the refresh token is dead server-side, and the original cookies no longer authenticate
+    expect((await api().post(`${base}/auth/refresh`).set('Cookie', refreshOnly).send({})).status).toBe(401);
+    expect((await api().get(`${base}/auth/me`).set('Cookie', all)).status).toBe(401);
+  });
+
+  it('logging out with no credentials at all is harmless and still clears cookies', async () => {
+    const logout = await api().post(`${base}/auth/logout`);
+    expect(logout.status).toBe(200);
+    expect(cookieFor(setCookies(logout), 'yf_refresh_token')).toMatch(/yf_refresh_token=;/);
+  });
+
   it('does not leak the refresh token into the /auth/me payload', async () => {
     const loginResponse = await api()
       .post(`${base}/auth/login`)

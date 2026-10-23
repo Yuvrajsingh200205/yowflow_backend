@@ -96,8 +96,13 @@ export const refresh = asyncHandler(async (req, res) => {
 });
 
 export const logout = asyncHandler(async (req, res) => {
-  const auth = requireAuthContext(req);
-  await authService.logout(auth.sessionId, requestMeta(req));
+  // Public on purpose: the refresh cookie alone is enough to sign out, so an expired access token can never trap a user in a session.
+  const cookies = (req.cookies ?? {}) as Record<string, string | undefined>;
+  const bearer = req.header('authorization');
+  await authService.logoutByCredentials(
+    { refreshToken: cookies[REFRESH_COOKIE], accessToken: cookies[ACCESS_COOKIE] ?? (bearer?.startsWith('Bearer ') ? bearer.slice(7).trim() : undefined) },
+    requestMeta(req),
+  );
   clearAuthCookies(res);
   return sendSuccess(res, { loggedOut: true });
 });

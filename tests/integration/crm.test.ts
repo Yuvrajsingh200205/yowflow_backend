@@ -440,6 +440,46 @@ describe('CRM: clients, projects, events, shoots', () => {
     expect(list.body.data[0].tasks[0].assignee.fullName).toBe('Member User');
   });
 
+  it('keeps unassigned crew headcounts of each shoot created with a project', async () => {
+    const response = await authed(token)
+      .post(`${base}/projects`)
+      .send({
+        client: { displayName: 'Crew Count Couple', primaryPhone: '9812345679' },
+        name: 'Crew Count Wedding',
+        type: 'WEDDING',
+        shoots: [
+          {
+            title: 'ABC',
+            shootDate: '2026-12-14',
+            plannedRoleSlots: [
+              { role: 'Photographer', requiredCount: 2 },
+              { role: 'Videographer', requiredCount: 1 },
+              { role: 'Assistant', requiredCount: 3 },
+              { role: 'Photographer', requiredCount: 1, name: 'Walk-in Lens', mobile: '9000000001', dataReceived: true, dataSizeGb: '12.5', copyInHD: 'HDD-1' },
+            ],
+          },
+          { title: 'CDE', shootDate: '2026-12-15', plannedRoleSlots: [{ role: 'Drone Operator', requiredCount: 1 }] },
+          { title: 'FGH', shootDate: '2026-12-16' },
+        ],
+      })
+      .expect(201);
+
+    const byTitle = (shoots: Array<{ title: string; plannedRoleSlots: unknown }>, title: string) =>
+      shoots.find((shoot) => shoot.title === title)?.plannedRoleSlots;
+    const expectedAbc = [
+      { role: 'Photographer', requiredCount: 2 },
+      { role: 'Videographer', requiredCount: 1 },
+      { role: 'Assistant', requiredCount: 3 },
+      { role: 'Photographer', requiredCount: 1, name: 'Walk-in Lens', mobile: '9000000001', dataReceived: true, dataSizeGb: '12.5', copyInHD: 'HDD-1' },
+    ];
+    expect(byTitle(response.body.data.shoots, 'ABC')).toEqual(expectedAbc);
+    expect(byTitle(response.body.data.shoots, 'CDE')).toEqual([{ role: 'Drone Operator', requiredCount: 1 }]);
+
+    const listed = await authed(token).get(`${base}/shoots?projectId=${response.body.data.id}&page=1&limit=10`).expect(200);
+    expect(byTitle(listed.body.data, 'ABC')).toEqual(expectedAbc);
+    expect(byTitle(listed.body.data, 'FGH') ?? null).toBeNull();
+  });
+
   it('enforces project visibility by assignment for managers and employees', async () => {
     const client = await createClient();
     const assignedToMember = await authed(token)

@@ -116,6 +116,21 @@ const embeddedEventSchema = z.object({
   notes: z.string().max(2000).optional(),
 });
 
+/**
+ * A planned slot is either one named crew row (requiredCount 1) or a headcount
+ * for a role nobody is assigned to yet (e.g. 2 photographers, no names).
+ */
+const plannedRoleSlotSchema = z.object({
+  role: z.string().trim().min(1).max(80),
+  requiredCount: z.coerce.number().int().min(1).max(100),
+  name: z.string().trim().max(160).optional(),
+  mobile: z.string().trim().max(30).optional(),
+  dataReceived: z.boolean().optional(),
+  dataSizeGb: nonNegativeDecimal.optional(),
+  copyInHD: z.string().max(160).optional(),
+  backupInHD: z.string().max(2000).optional(),
+});
+
 const embeddedProjectShootSchema = z.object({
   title: z.string().trim().min(1).max(160),
   shootType: embeddedProjectShootType.optional(),
@@ -126,7 +141,7 @@ const embeddedProjectShootSchema = z.object({
   city: z.string().max(80).optional(),
   notes: z.string().max(5000).optional(),
   status: embeddedProjectShootStatus.optional(),
-  plannedRoleSlots: z.array(z.object({ role: z.string().trim().min(1).max(80), requiredCount: z.coerce.number().int().min(1).max(100), name: z.string().trim().max(160).optional(), mobile: z.string().trim().max(30).optional() })).max(30).optional(),
+  plannedRoleSlots: z.array(plannedRoleSlotSchema).max(30).optional(),
   crewAssignments: z.array(z.object({
     userId: uuid,
     role: embeddedProjectCrewRole,
@@ -350,17 +365,6 @@ export const shootListQuery = listQuery.extend({
   shootType: SHOOT_TYPE.optional(),
   userId: uuid.optional(),
   freelancerId: uuid.optional(),
-});
-
-const plannedRoleSlotSchema = z.object({
-  role: z.string().trim().min(1).max(80),
-  requiredCount: z.coerce.number().int().min(1).max(100),
-  name: z.string().trim().max(160).optional(),
-  mobile: z.string().trim().max(30).optional(),
-  dataReceived: z.boolean().optional(),
-  dataSizeGb: nonNegativeDecimal.optional(),
-  copyInHD: z.string().max(160).optional(),
-  backupInHD: z.string().max(2000).optional(),
 });
 
 export const createShootSchema = z.object({

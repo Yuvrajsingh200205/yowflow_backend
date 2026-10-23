@@ -6,6 +6,7 @@ import { hashPassword, verifyPassword } from '../utils/password';
 import {
   generateRefreshToken,
   hashRefreshToken,
+  verifyAccessToken,
   parseDuration,
   signAccessToken,
 } from '../utils/jwt';
@@ -283,6 +284,22 @@ export async function refresh(
 
   const tokens = await issueSession(user.id, user.organizationId, meta);
   return { user: toSessionUser(user), tokens };
+}
+
+/**
+ * Signs out whoever holds these credentials. Logging out must work even when the short-lived access token has
+ * already expired (the refresh token alone identifies the session); otherwise the browser keeps its cookies and is
+ * silently signed straight back in.
+ */
+export async function logoutByCredentials(input: { refreshToken?: string; accessToken?: string }, meta: RequestMeta): Promise<void> {
+  let sessionId: string | null = null;
+  if (input.refreshToken) {
+    sessionId = (await prisma.session.findUnique({ where: { refreshTokenHash: hashRefreshToken(input.refreshToken) }, select: { id: true } }))?.id ?? null;
+  }
+  if (!sessionId && input.accessToken) {
+    try { sessionId = verifyAccessToken(input.accessToken).sessionId; } catch { /* an expired or foreign token identifies nobody */ }
+  }
+  if (sessionId) await logout(sessionId, meta);
 }
 
 export async function logout(sessionId: string, meta: RequestMeta): Promise<void> {

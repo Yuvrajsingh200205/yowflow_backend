@@ -16,9 +16,10 @@ router.post('/forgot-password', authLimiter, validate({ body: forgotPasswordSche
 router.post('/reset-password', authLimiter, validate({ body: resetPasswordSchema }), controller.resetPassword);
 router.post('/verify-email', authLimiter, validate({ body: verifyEmailSchema }), controller.verifyEmail);
 
+router.post('/logout', controller.logout);
+
 router.use(requireAuth);
 router.post('/resend-verification', authLimiter, controller.resendVerification);
-router.post('/logout', controller.logout);
 router.get('/me', controller.me);
 router.get('/sessions', controller.sessions);
 router.post('/sessions/revoke-all', controller.revokeSessions);

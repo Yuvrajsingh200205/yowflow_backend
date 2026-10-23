@@ -60,6 +60,20 @@ describe('client portal authentication', () => {
     expect((await fresh.get(`${base}/portal/me`)).status).toBe(200);
   });
 
+  it('signs out with only the refresh cookie (expired access token) and the session is really gone', async () => {
+    await signedInCouple(f);
+    const res = await api().post(`${base}/portal/auth/login`).send({ email: f.inviteEmail, password: PORTAL_PASSWORD }).expect(200);
+    const jar = (res.headers['set-cookie'] as unknown as string[]).map((c) => c.split(';')[0]);
+    const refreshOnly = jar.filter((c) => c.startsWith('yf_portal_refresh_token=')).join('; ');
+    const out = await api().post(`${base}/portal/auth/logout`).set('Cookie', refreshOnly);
+    expect(out.status).toBe(200);
+    expect((out.headers['set-cookie'] as unknown as string[]).join(';')).toMatch(/yf_portal_refresh_token=;/);
+    expect((await api().post(`${base}/portal/auth/refresh`).set('Cookie', refreshOnly).send({})).status).toBe(401);
+    expect((await api().get(`${base}/portal/me`).set('Cookie', jar.join('; '))).status).toBe(401);
+    // and with nothing at all it is still a harmless 200
+    expect((await api().post(`${base}/portal/auth/logout`)).status).toBe(200);
+  });
+
   it('never reveals whether an email has portal access', async () => {
     await signedInCouple(f);
     const a = await api().post(`${base}/portal/auth/login`).send({ email: 'nobody@portal.test', password: 'Whatever#12345' });

@@ -46,7 +46,8 @@ export const refresh = asyncHandler(async (req, res) => {
 });
 
 export const logout = asyncHandler(async (req, res) => {
-  await authService.logout(requirePortalContext(req).sessionId);
+  const cookies = (req.cookies ?? {}) as Record<string, string | undefined>;
+  await authService.logoutByCredentials({ refreshToken: cookies[PORTAL_REFRESH_COOKIE], accessToken: cookies[PORTAL_ACCESS_COOKIE] });
   clearCookies(res);
   return sendSuccess(res, { loggedOut: true });
 });

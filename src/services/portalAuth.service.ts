@@ -5,7 +5,7 @@ import { logger } from '../config/logger';
 import { AuthContext } from '../types';
 import { hashPassword, verifyPassword } from '../utils/password';
 import { generateRefreshToken, hashRefreshToken, parseDuration } from '../utils/jwt';
-import { signPortalAccessToken } from '../utils/portalJwt';
+import { signPortalAccessToken, verifyPortalAccessToken } from '../utils/portalJwt';
 import { newToken, sha256 } from '../utils/token';
 import { badRequest, conflict, forbidden, notFound, unauthenticated } from '../utils/errors';
 import { AuditRequestContext, recordAudit } from './audit.service';
@@ -198,6 +198,16 @@ export async function refresh(refreshToken: string, meta: RequestMeta) {
   await prisma.clientPortalSession.update({ where: { id: session.id }, data: { status: SessionStatus.LOGGED_OUT, revokedAt: new Date(), revokeReason: LogoutReason.TOKEN_REFRESH_ROTATION } });
   const tokens = await issueSession(session.portalUserId, session.portalUser.organizationId, meta);
   return { me: await getPortalMe(session.portalUser.organizationId, session.portalUserId), tokens };
+}
+
+/** Like the staff logout: the refresh cookie alone ends the session, so an expired access token cannot trap anyone signed in. */
+export async function logoutByCredentials(input: { refreshToken?: string; accessToken?: string }): Promise<void> {
+  let sessionId: string | null = null;
+  if (input.refreshToken) sessionId = (await prisma.clientPortalSession.findUnique({ where: { refreshTokenHash: hashRefreshToken(input.refreshToken) }, select: { id: true } }))?.id ?? null;
+  if (!sessionId && input.accessToken) {
+    try { sessionId = verifyPortalAccessToken(input.accessToken).portalSessionId; } catch { /* expired or foreign */ }
+  }
+  if (sessionId) await logout(sessionId);
 }
 
 export async function logout(sessionId: string): Promise<void> {

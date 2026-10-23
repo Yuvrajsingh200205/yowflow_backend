@@ -19,8 +19,9 @@ portalRouter.post('/auth/invite/:token/accept', authLimiter, validate({ params: 
 portalRouter.post('/auth/forgot-password', authLimiter, validate({ body: portalForgotSchema }), controller.forgotPassword);
 portalRouter.post('/auth/reset-password', authLimiter, validate({ body: portalResetSchema }), controller.resetPassword);
 
-portalRouter.use(requirePortalAuth);
 portalRouter.post('/auth/logout', controller.logout);
+
+portalRouter.use(requirePortalAuth);
 portalRouter.get('/me', controller.me);
 
 // Projects and payments

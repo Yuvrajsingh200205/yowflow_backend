@@ -649,7 +649,7 @@ export interface CreateProjectInput {
     city?: string;
     notes?: string;
     status?: ShootStatus;
-    plannedRoleSlots?: Array<{ role: string; requiredCount: number; name?: string; mobile?: string }>;
+    plannedRoleSlots?: Array<{ role: string; requiredCount: number; name?: string; mobile?: string; dataReceived?: boolean; dataSizeGb?: string; copyInHD?: string; backupInHD?: string }>;
     crewAssignments?: Array<{
       userId: string;
       role: CrewRole;
