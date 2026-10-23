@@ -8,6 +8,9 @@ import {
   freelancerPortalRefreshSchema,
   freelancerProfileUpdateSchema,
   itemIdParam,
+  joinStudioParam,
+  portalCheckoutSchema,
+  portalCheckoutVerifySchema,
   onboardingPasswordSchema,
   onboardingTokenParam,
   portalAvailabilityDateParam,
@@ -18,6 +21,8 @@ import {
   portalNotificationListQuery,
   portalPaymentListQuery,
   portalPortfolioCreateSchema,
+  portalPortfolioIntentSchema,
+  portalPortfolioUploadSchema,
   portalPortfolioUpdateSchema,
   portalProjectListQuery,
   portalResourceIdParam,
@@ -30,6 +35,8 @@ import {
 
 const router = Router();
 
+router.get('/join-studio', controller.studioForJoin);
+router.get('/studios/:slug', validate({ params: joinStudioParam }), controller.studioForJoin);
 router.post('/applications', validate({ body: publicFreelancerApplicationSchema }), controller.submitApplication);
 router.post('/auth/login', authLimiter, validate({ body: freelancerPortalLoginSchema }), controller.login);
 router.post('/auth/refresh', authLimiter, validate({ body: freelancerPortalRefreshSchema }), controller.refresh);
@@ -46,10 +53,15 @@ router.put('/availability', validate({ body: portalAvailabilitySchema }), contro
 router.patch('/availability/:date', validate({ params: portalAvailabilityDateParam, body: portalAvailabilityUpdateSchema }), controller.updateAvailability);
 router.delete('/availability/:date', validate({ params: portalAvailabilityDateParam }), controller.deleteAvailability);
 router.patch('/connections/:id', validate({ params: portalResourceIdParam, body: portalConnectionResponseSchema }), controller.respondToConnection);
+router.post('/portfolio/upload-intent', validate({ body: portalPortfolioIntentSchema }), controller.portfolioUploadIntent);
+router.post('/portfolio/upload', validate({ body: portalPortfolioUploadSchema }), controller.portfolioUpload);
 router.post('/portfolio', validate({ body: portalPortfolioCreateSchema }), controller.createPortfolioItem);
 router.patch('/portfolio/:itemId', validate({ params: itemIdParam, body: portalPortfolioUpdateSchema }), controller.updatePortfolioItem);
 router.delete('/portfolio/:itemId', validate({ params: itemIdParam }), controller.deletePortfolioItem);
 router.get('/plans', controller.listPlans);
+router.post('/subscription/checkout', validate({ body: portalCheckoutSchema }), controller.startCheckout);
+router.post('/subscription/verify', validate({ body: portalCheckoutVerifySchema }), controller.verifyCheckout);
+router.post('/subscription/cancel', controller.cancelSubscription);
 router.get('/dashboard', controller.dashboard);
 router.get('/projects', validate({ query: portalProjectListQuery }), controller.projects);
 router.get('/projects/:id', validate({ params: portalResourceIdParam }), controller.project);

@@ -3,7 +3,7 @@ import { prisma } from '../config/prisma';
 import { env } from '../config/env';
 import { brand } from '../config/brand';
 import { AuthContext } from '../types';
-import { badRequest, conflict, internal } from '../utils/errors';
+import { badRequest, conflict, internal, serviceUnavailable } from '../utils/errors';
 import { AuditRequestContext, recordAudit } from './audit.service';
 
 /** Monthly prices in rupees. Keep in sync with the marketing pricing page. Yearly = 10 months. */
@@ -29,8 +29,8 @@ interface BillingState {
 }
 type OrgSettings = { plan?: string; trialEndsAt?: string; billing?: BillingState } & Record<string, unknown>;
 
-const isConfigured = () => Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET);
-const mode = () => (env.RAZORPAY_KEY_ID?.startsWith('rzp_live_') ? 'live' : 'test');
+export const isConfigured = () => Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET);
+export const mode = () => (env.RAZORPAY_KEY_ID?.startsWith('rzp_live_') ? 'live' : 'test');
 
 async function readSettings(organizationId: string): Promise<OrgSettings> {
   const org = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { settings: true } });
@@ -63,7 +63,7 @@ export async function getBilling(auth: AuthContext) {
   };
 }
 
-async function razorpay<T>(path: string, body: unknown): Promise<T> {
+export async function razorpay<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`https://api.razorpay.com/v1${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Basic ${Buffer.from(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`).toString('base64')}` },
@@ -74,7 +74,7 @@ async function razorpay<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function createCheckout(auth: AuthContext, input: { plan: PlanId; interval: Interval }) {
-  if (!isConfigured()) throw Object.assign(internal('Billing is not configured for this deployment'), { statusCode: 503 });
+  if (!isConfigured()) throw serviceUnavailable('Online payments are not enabled for this deployment yet.');
   const amount = priceFor(input.plan, input.interval) * 100; // paise
   const order = await razorpay<{ id: string; amount: number; currency: string }>('/orders', {
     amount,
@@ -95,7 +95,7 @@ export const signaturesMatch = (orderId: string, paymentId: string, signature: s
 };
 
 export async function verifyPayment(auth: AuthContext, input: { orderId: string; paymentId: string; signature: string }, ctx: AuditRequestContext) {
-  if (!isConfigured()) throw Object.assign(internal('Billing is not configured for this deployment'), { statusCode: 503 });
+  if (!isConfigured()) throw serviceUnavailable('Online payments are not enabled for this deployment yet.');
   const settings = await readSettings(auth.organizationId);
   const pending = settings.billing?.pendingOrder;
   if (!pending || pending.orderId !== input.orderId) throw conflict('No matching checkout is pending for this workspace');

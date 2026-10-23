@@ -74,7 +74,7 @@ const USER_SELECT = {
 
 type RawUser = Awaited<ReturnType<typeof findUserForLogin>>;
 
-async function findUserForLogin(identifier: string, organizationSlug?: string) {
+async function findUserForLogin(identifier: string, organizationSlug?: string, password?: string) {
   const users = await prisma.user.findMany({
     where: {
       OR: [
@@ -86,14 +86,16 @@ async function findUserForLogin(identifier: string, organizationSlug?: string) {
       ...(organizationSlug ? { organization: { slug: organizationSlug } } : {}),
     },
     select: USER_SELECT,
+    orderBy: { lastLoginAt: { sort: 'desc', nulls: 'last' } },
+    take: 10,
   });
 
   if (users.length === 0) return null;
-  if (users.length > 1) {
-    // The same address exists in several studios; the caller must disambiguate.
-    throw badRequest(
-      'This email belongs to more than one organization. Provide organizationSlug.',
-    );
+  if (users.length === 1 || password === undefined) return users[0];
+  // The same e-mail or phone exists in several studios (typical for freelancers who work with more than one).
+  // The password says which account is meant; nobody can be signed in to an account whose password they lack.
+  for (const candidate of users) {
+    if (await verifyPassword(password, candidate.passwordHash)) return candidate;
   }
   return users[0];
 }
@@ -165,7 +167,7 @@ export async function login(
   meta: RequestMeta,
 ): Promise<{ user: SessionUser; tokens: AuthTokens }> {
   const identifier = input.email.trim().toLowerCase();
-  const user = await findUserForLogin(identifier, input.organizationSlug);
+  const user = await findUserForLogin(identifier, input.organizationSlug, input.password);
 
   const recordAttempt = async (outcome: LoginOutcome, userId?: string) => {
     await prisma.loginHistory.create({

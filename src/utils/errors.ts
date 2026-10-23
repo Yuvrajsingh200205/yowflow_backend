@@ -64,3 +64,6 @@ export const unprocessable = (message: string, details: ErrorDetail[] = []) =>
 
 export const internal = (message = 'An unexpected error occurred') =>
   new AppError(500, 'INTERNAL_ERROR', message, [], false);
+
+/** A feature that is switched off or temporarily unavailable; the message is safe to show to users. */
+export const serviceUnavailable = (message: string) => new AppError(503, 'SERVICE_UNAVAILABLE', message);

@@ -147,7 +147,8 @@ describe('freelancer foundation security', () => {
     const created = await api()
       .post(`${base}/freelancer-portal/applications`)
       .send({
-        organizationSlug: 'foundation-b',
+        studio: 'foundation-a',
+        organizationId: otherOrg.organizationId,
         fullName: 'Public Applicant',
         phone: '9876543212',
         email: 'public.artist@example.com',

@@ -5,6 +5,7 @@ import { asyncHandler } from '../utils/http';
 import { sendCreated, sendNoContent, sendSuccess } from '../utils/response';
 import { unauthenticated } from '../utils/errors';
 import * as service from '../services/freelancerPortal.service';
+import * as billing from '../services/freelancerBilling.service';
 import * as onboardingService from '../services/freelancerOnboarding.service';
 
 const cookieOptions = (maxAgeSeconds: number) => ({
@@ -30,6 +31,11 @@ const meta = (req: Request) => ({
 const freelancer = (req: Request) => {
   if (!req.freelancerAuth) throw unauthenticated('Freelancer authentication required');
   return req.freelancerAuth;
+};
+
+const portalAudit = (req: Request) => {
+  const auth = freelancer(req);
+  return { organizationId: auth.organizationId, actorId: null, ipAddress: req.ip ?? null, userAgent: req.header('user-agent') ?? null, requestId: req.requestId ?? null };
 };
 
 const sessionMeta = (tokens: service.FreelancerTokens) => ({ expiresIn: tokens.refreshTokenExpiresIn });
@@ -195,4 +201,32 @@ export const payments = asyncHandler(async (req, res) => {
 export const notifications = asyncHandler(async (req, res) => {
   const auth = freelancer(req);
   return sendSuccess(res, await service.listNotifications(auth.organizationId, auth.freelancerId, req.query));
+});
+
+export const studioForJoin = asyncHandler(async (req, res) => {
+  const slug = (req.params.slug ?? (typeof req.query.studio === 'string' ? req.query.studio : undefined))?.trim().toLowerCase() || undefined;
+  const org = await service.resolveJoinStudio(slug);
+  return sendSuccess(res, { name: org.name, slug: org.slug });
+});
+
+export const startCheckout = asyncHandler(async (req, res) => {
+  const auth = freelancer(req);
+  return sendSuccess(res, await billing.startCheckout(auth.organizationId, auth.freelancerId, req.body.planId, portalAudit(req)));
+});
+export const verifyCheckout = asyncHandler(async (req, res) => {
+  const auth = freelancer(req);
+  return sendSuccess(res, await billing.verifyCheckout(auth.organizationId, auth.freelancerId, req.body, portalAudit(req)));
+});
+export const cancelSubscription = asyncHandler(async (req, res) => {
+  const auth = freelancer(req);
+  return sendSuccess(res, await billing.cancelSubscription(auth.organizationId, auth.freelancerId, portalAudit(req)));
+});
+
+export const portfolioUploadIntent = asyncHandler(async (req, res) => {
+  const auth = freelancer(req);
+  return sendSuccess(res, await service.createPortfolioUploadIntent(auth.organizationId, auth.freelancerId, req.body));
+});
+export const portfolioUpload = asyncHandler(async (req, res) => {
+  const auth = freelancer(req);
+  return sendCreated(res, await service.addPortfolioUpload(auth.organizationId, auth.freelancerId, req.body));
 });

@@ -11,6 +11,12 @@ import { isFreelancerSearchable } from './freelancer.service';
 import { dateRangeFilter, toDateOnly } from '../utils/date';
 import { resolvePagination } from '../utils/pagination';
 import { nextDocumentNumber } from '../utils/documentNumber';
+import { newToken } from '../utils/token';
+import { buildObjectKey, createSignedUrl, createUploadUrl, getStorageProvider } from './storage.service';
+import { ensureDefaultPlans } from './freelancerBilling.service';
+
+let dummyHash: Promise<string> | undefined;
+const getDummyHash = () => (dummyHash ??= hashPassword(newToken()));
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000;
@@ -85,6 +91,8 @@ const safeFileObject = (file: PortalFreelancerRecord['portfolioItems'][number]['
   mimeType: file.mimeType,
   sizeBytes: file.sizeBytes,
   createdAt: file.createdAt,
+  /** Short-lived signed link so the page can show the picture. */
+  url: file.mimeType.startsWith('image/') || file.mimeType.startsWith('video/') ? createSignedUrl(file.objectKey, file.bucket).url : null,
 });
 
 function toPortalFreelancer(freelancer: PortalFreelancerRecord) {
@@ -150,21 +158,34 @@ export async function getPortalMe(organizationId: string, freelancerId: string) 
 }
 
 export async function login(
-  input: { identifier: string; password: string },
+  input: { identifier: string; password: string; studio?: string },
   meta: RequestMeta,
 ): Promise<{ me: Awaited<ReturnType<typeof getPortalMe>>; tokens: FreelancerTokens }> {
   const identifier = input.identifier.trim().toLowerCase();
-  const freelancer = await prisma.freelancer.findFirst({
+  // The same phone or e-mail can belong to freelancers of different studios; the password decides which account is meant.
+  const candidates = await prisma.freelancer.findMany({
     where: {
       deletedAt: null,
+      status: { not: 'SUSPENDED' },
+      ...(input.studio ? { organization: { slug: input.studio.toLowerCase() } } : {}),
       OR: [{ email: identifier }, { phone: identifier }, { whatsapp: identifier }],
     },
+    orderBy: [{ lastLoginAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'asc' }],
+    take: 10,
   });
-  if (!freelancer?.passwordHash) throw unauthenticated('Invalid freelancer credentials');
-  if (freelancer.lockedUntil && freelancer.lockedUntil > new Date()) {
-    throw unauthenticated('Freelancer account is temporarily locked');
+  const withPassword = candidates.filter((c) => c.passwordHash);
+  if (withPassword.length === 0) {
+    await verifyPassword(input.password, await getDummyHash()); // keep timing similar for unknown accounts
+    throw unauthenticated('Invalid freelancer credentials');
   }
-  if (!(await verifyPassword(input.password, freelancer.passwordHash))) {
+  let freelancer = withPassword[0];
+  let matched = false;
+  for (const c of withPassword) {
+    if (c.lockedUntil && c.lockedUntil > new Date()) continue;
+    if (await verifyPassword(input.password, c.passwordHash as string)) { freelancer = c; matched = true; break; }
+  }
+  if (!matched) {
+    if (withPassword.every((c) => c.lockedUntil && c.lockedUntil > new Date())) throw unauthenticated('Freelancer account is temporarily locked');
     const attempts = freelancer.failedLoginAttempts + 1;
     await prisma.freelancer.update({
       where: { id: freelancer.id },
@@ -229,7 +250,22 @@ export async function logout(sessionId: string): Promise<void> {
   });
 }
 
+/** Resolves which studio a public freelancer application is for. */
+export async function resolveJoinStudio(slug?: string) {
+  if (slug) {
+    const org = await prisma.organization.findFirst({ where: { slug: slug.toLowerCase(), deletedAt: null }, select: { id: true, name: true, slug: true } });
+    if (!org) throw notFound('Studio');
+    return org;
+  }
+  // A single-studio installation needs no link. With several studios an application must say which one it is for;
+  // silently picking one would file a stranger's application under the wrong business.
+  const orgs = await prisma.organization.findMany({ where: { deletedAt: null }, select: { id: true, name: true, slug: true }, take: 2 });
+  if (orgs.length === 1) return orgs[0];
+  throw badRequest('Open the freelancer join link your studio shared with you.');
+}
+
 export async function submitApplication(input: {
+  studio?: string;
   fullName: string;
   phone: string;
   password: string;
@@ -242,12 +278,7 @@ export async function submitApplication(input: {
   expectedRate?: Prisma.Decimal.Value;
   notes?: string;
 }) {
-  const organization = await prisma.organization.findFirst({
-    where: { deletedAt: null },
-    orderBy: { createdAt: 'asc' },
-    select: { id: true },
-  });
-  if (!organization) throw notFound('Organization');
+  const organization = await resolveJoinStudio(input.studio);
   const normalizedEmail = input.email?.toLowerCase();
   const existingFreelancer = await prisma.freelancer.findFirst({
     where: {
@@ -562,6 +593,54 @@ export async function createPortfolioItem(organizationId: string, freelancerId: 
   return prisma.freelancerPortfolioItem.create({ data: { freelancerId, ...input } });
 }
 
+const PORTFOLIO_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'video/mp4']);
+const PORTFOLIO_MAX_BYTES = 25 * 1024 * 1024;
+const PORTFOLIO_ENTITY = 'FREELANCER_PORTFOLIO';
+const PORTFOLIO_MAX_ITEMS = 60;
+
+/** Step 1 of uploading a work sample: a signed upload URL. The freelancer never needs to know about file ids. */
+export async function createPortfolioUploadIntent(organizationId: string, freelancerId: string, input: { originalName: string; mimeType: string }) {
+  if (!PORTFOLIO_MIME.has(input.mimeType)) throw badRequest('Upload a JPG, PNG, WEBP image or an MP4 film.');
+  const objectKey = buildObjectKey(organizationId, PORTFOLIO_ENTITY, input.originalName);
+  const bucket = env.STORAGE_BUCKET;
+  const signed = createUploadUrl(objectKey, bucket);
+  if (getStorageProvider() === 'DATABASE') {
+    await prisma.fileObject.create({
+      data: { organizationId, entityType: PORTFOLIO_ENTITY, entityId: freelancerId, storageProvider: 'DATABASE', bucket, objectKey, originalName: input.originalName, mimeType: input.mimeType, sizeBytes: BigInt(0), isRegistered: false },
+    });
+  }
+  return { bucket, objectKey, provider: getStorageProvider(), uploadUrl: signed.url, expiresAt: signed.expiresAt, requiredHeaders: { 'content-type': input.mimeType } };
+}
+
+/** Step 2: record the uploaded file and add it to the portfolio in one go. */
+export async function addPortfolioUpload(organizationId: string, freelancerId: string, input: {
+  bucket: string; objectKey: string; originalName: string; mimeType: string; sizeBytes: number;
+  title: string; description?: string; category?: string; isPublished?: boolean;
+}) {
+  if (!PORTFOLIO_MIME.has(input.mimeType)) throw badRequest('Upload a JPG, PNG, WEBP image or an MP4 film.');
+  if (input.sizeBytes <= 0 || input.sizeBytes > PORTFOLIO_MAX_BYTES) throw badRequest('Each portfolio file must be under 25 MB.');
+  // The key must be one this studio handed out for portfolios, so nobody can attach an arbitrary stored file.
+  if (!input.objectKey.startsWith(`${organizationId}/${PORTFOLIO_ENTITY.toLowerCase()}/`)) throw badRequest('That upload does not belong to your portfolio.');
+  if ((await prisma.freelancerPortfolioItem.count({ where: { freelancerId } })) >= PORTFOLIO_MAX_ITEMS) throw conflict(`Your portfolio is full (${PORTFOLIO_MAX_ITEMS} items). Remove one to add another.`);
+
+  let file;
+  if (getStorageProvider() === 'DATABASE') {
+    const pending = await prisma.fileObject.findFirst({ where: { organizationId, bucket: input.bucket, objectKey: input.objectKey, storageProvider: 'DATABASE', isRegistered: false, entityType: PORTFOLIO_ENTITY, entityId: freelancerId, deletedAt: null }, select: { id: true, content: true } });
+    if (!pending?.content) throw badRequest('The file upload has not completed.');
+    if (pending.content.byteLength !== input.sizeBytes) throw badRequest('The registered file size does not match the uploaded content.');
+    file = await prisma.fileObject.update({ where: { id: pending.id }, data: { originalName: input.originalName, mimeType: input.mimeType, sizeBytes: BigInt(input.sizeBytes), isRegistered: true } });
+  } else {
+    file = await prisma.fileObject.create({
+      data: { organizationId, entityType: PORTFOLIO_ENTITY, entityId: freelancerId, storageProvider: getStorageProvider(), bucket: input.bucket, objectKey: input.objectKey, originalName: input.originalName, mimeType: input.mimeType, sizeBytes: BigInt(input.sizeBytes) },
+    });
+  }
+  const item = await prisma.freelancerPortfolioItem.create({
+    data: { freelancerId, fileObjectId: file.id, title: input.title, description: input.description, category: input.category, isPublished: input.isPublished ?? true },
+    include: { fileObject: true },
+  });
+  return { ...item, fileObject: safeFileObject(item.fileObject) };
+}
+
 export async function updatePortfolioItem(organizationId: string, freelancerId: string, itemId: string, input: Prisma.FreelancerPortfolioItemUpdateInput) {
   const existing = await prisma.freelancerPortfolioItem.findFirst({ where: { id: itemId, freelancerId, freelancer: { organizationId } } });
   if (!existing) throw notFound('Freelancer portfolio item');
@@ -575,6 +654,7 @@ export async function deletePortfolioItem(organizationId: string, freelancerId: 
 }
 
 export async function listPlans(organizationId: string) {
+  await ensureDefaultPlans(organizationId);
   return prisma.freelancerPlan.findMany({ where: { organizationId, isActive: true }, orderBy: { price: 'asc' } });
 }
 

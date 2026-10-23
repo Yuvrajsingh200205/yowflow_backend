@@ -6,6 +6,7 @@ import { FREELANCER_AVAILABILITY_STATUS, RATE_TYPE, TASK_STATUS } from './ops.va
 export const freelancerPortalLoginSchema = z.object({
   identifier: z.string().trim().min(1).max(160),
   password: z.string().min(1).max(255),
+  studio: z.string().trim().toLowerCase().max(80).optional(),
 });
 
 export const freelancerPortalRefreshSchema = z.object({});
@@ -13,6 +14,7 @@ export const freelancerPortalRefreshSchema = z.object({});
 const publicFreelancerPassword = z.string().min(6, 'Password must be at least 6 characters').max(128);
 
 export const publicFreelancerApplicationSchema = z.object({
+  studio: z.string().trim().toLowerCase().min(2).max(80).optional(),
   fullName: z.string().trim().min(1).max(160),
   phone,
   password: publicFreelancerPassword,
@@ -139,4 +141,21 @@ export const portalTaskStatusUpdateSchema = z.object({
 export const portalConnectionResponseSchema = z.object({
   status: z.enum(['ACCEPTED', 'DECLINED']),
   notes: z.string().max(5000).optional().nullable(),
+});
+
+export const portalCheckoutSchema = z.object({ planId: z.string().uuid() });
+export const portalCheckoutVerifySchema = z.object({ orderId: z.string().min(5).max(80), paymentId: z.string().min(5).max(80), signature: z.string().min(10).max(200) });
+export const joinStudioParam = z.object({ slug: z.string().trim().toLowerCase().min(2).max(80) });
+
+export const portalPortfolioIntentSchema = z.object({ originalName: z.string().trim().min(1).max(200), mimeType: z.string().trim().min(3).max(100) });
+export const portalPortfolioUploadSchema = z.object({
+  bucket: z.string().trim().min(1).max(120),
+  objectKey: z.string().trim().min(1).max(500),
+  originalName: z.string().trim().min(1).max(200),
+  mimeType: z.string().trim().min(3).max(100),
+  sizeBytes: z.coerce.number().int().min(1),
+  title: z.string().trim().min(1).max(160),
+  description: z.string().max(5000).optional(),
+  category: z.string().trim().max(80).optional(),
+  isPublished: z.boolean().optional(),
 });
