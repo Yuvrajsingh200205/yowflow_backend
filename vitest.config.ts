@@ -29,6 +29,13 @@ export default defineConfig({
       NODE_ENV: 'test',
       DATABASE_URL: testDatabaseUrl,
       LOG_LEVEL: 'silent',
+      // Tests read the e-mail outbox; they must never send real mail, whatever the developer's .env holds.
+      SMTP_HOST: '',
+      SMTP_USER: '',
+      SMTP_PASS: '',
+      // ...nor touch real payment or storage accounts.
+      RAZORPAY_KEY_ID: '',
+      RAZORPAY_KEY_SECRET: '',
     },
   },
 });
