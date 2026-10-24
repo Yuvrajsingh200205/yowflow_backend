@@ -5,7 +5,7 @@ import { requirePermission } from '../middleware/rbac';
 import { idempotent } from '../middleware/idempotency';
 import * as salesController from '../controllers/sales.controller';
 import { idParam } from '../validators/common.validator';
-import { quoteConvertSchema, quoteFromLeadSchema, quoteSendSchema, quoteUpdateSchema } from '../validators/sales.validator';
+import { quickQuoteSchema, quoteConvertSchema, quoteFromLeadSchema, quoteSendSchema, quoteUpdateSchema } from '../validators/sales.validator';
 import {
   allocatePaymentSchema,
   createExpenseSchema,
@@ -44,6 +44,7 @@ quotationRouter.post(
 );
 // Fixed paths first, so they are never read as an id.
 quotationRouter.get('/today', requirePermission('QUOTATION_VIEW'), salesController.todayList);
+quotationRouter.post('/quick', requirePermission('QUOTATION_CREATE'), validate({ body: quickQuoteSchema }), salesController.quickQuote);
 quotationRouter.post('/from-lead', requirePermission('QUOTATION_CREATE'), validate({ body: quoteFromLeadSchema }), salesController.quoteFromLead);
 quotationRouter.get(
   '/:id',

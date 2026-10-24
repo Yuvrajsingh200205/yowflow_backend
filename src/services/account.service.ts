@@ -9,6 +9,7 @@ import { badRequest, conflict, notFound } from '../utils/errors';
 import { recordAudit } from './audit.service';
 import { passwordResetEmail, sendMail, verificationEmail } from './mailer.service';
 import { provisionOrganization } from './tenant.service';
+import { addDefaultKit } from './templateLibrary.service';
 
 export interface RequestMeta {
   ipAddress?: string | null;
@@ -84,6 +85,8 @@ export async function signup(input: SignupInput, meta: RequestMeta) {
       });
       const adminRoleId = provisioned.roleIds.get('Admin');
       if (!adminRoleId) throw new Error('System role "Admin" was not provisioned');
+      // A new studio can make its first quote straight away: the common packages are already in its price list (examples to check).
+      await addDefaultKit(tx, provisioned.organization.id, null);
       const created = await tx.user.create({
         data: {
           organizationId: provisioned.organization.id,

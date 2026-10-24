@@ -59,6 +59,25 @@ export async function updateSalesSettings(auth: AuthContext, input: Record<strin
   return getSalesSettings(auth.organizationId);
 }
 
+/** A few yes/no facts about how ready the studio is to quote, for the "get started" checklist. */
+export async function getReadiness(organizationId: string) {
+  const [items, setting, page, org] = await Promise.all([
+    prisma.catalogItem.findMany({ where: { organizationId, deletedAt: null, isActive: true }, select: { kind: true, isExample: true } }),
+    prisma.organizationSetting.findUnique({ where: { organizationId }, select: { upiId: true, bankAccountNumber: true } }),
+    prisma.enquiryPage.findUnique({ where: { organizationId }, select: { isEnabled: true } }),
+    prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { phone: true, slug: true } }),
+  ]);
+  return {
+    packages: items.filter((i) => i.kind === 'PACKAGE').length,
+    addons: items.filter((i) => i.kind === 'ADDON').length,
+    examplePrices: items.filter((i) => i.isExample).length,
+    paymentDetails: Boolean(setting?.upiId || setting?.bankAccountNumber),
+    businessPhone: Boolean(org.phone),
+    bookingPageOn: Boolean(page?.isEnabled),
+    slug: org.slug,
+  };
+}
+
 // ── Enquiry page ────────────────────────────────────────────────────────────
 export async function getEnquiryPage(organizationId: string) {
   const [org, page] = await Promise.all([

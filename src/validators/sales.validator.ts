@@ -160,6 +160,29 @@ export const quoteUpdateSchema = z.object({ ...header, items: z.array(quoteLineS
 export const quoteSendSchema = z.object({ channel: z.enum(['EMAIL', 'LINK', 'WHATSAPP']) }).strict();
 export const quoteConvertSchema = z.object({ overrideAvailability: z.boolean().optional() }).strict();
 
+export const templateImportSchema = z.object({ keys: z.array(z.string().trim().min(1).max(60)).min(1).max(80) }).strict();
+
+/** Accepts the ways Indians write a mobile number and reduces them to the 10 digits. */
+const quickMobile = z.string().trim().max(24).transform((v) => {
+  const d = v.replace(/\D/g, '');
+  return d.length === 12 && d.startsWith('91') ? d.slice(2) : d.length === 11 && d.startsWith('0') ? d.slice(1) : d;
+}).refine((d) => /^[6-9]\d{9}$/.test(d), 'Enter a valid 10-digit mobile number');
+
+export const quickQuoteSchema = z.object({
+  name: text(160).min(2, 'Enter the customer’s name'),
+  phone: quickMobile,
+  email: z.union([z.string().trim().toLowerCase().email().max(160), z.literal('').transform(() => null)]).nullable().optional(),
+  eventType: eventTypeEnum.nullable().optional(),
+  eventDate: dateOnly.nullable().optional(),
+  eventDays: z.coerce.number().int().min(1).max(60).optional(),
+  guestCount: z.coerce.number().int().min(1).max(100_000).nullable().optional(),
+  venueCity: z.union([empty, text(80)]).nullable().optional(),
+  packageId: uuid.nullable().optional(),
+  addonIds: z.array(uuid).max(30).optional(),
+  /** Instead of a package: one line the studio prices itself. */
+  custom: z.object({ service: text(200).min(2, 'Say what the price is for'), unitPrice: money, taxRate: pct.default(0) }).strict().optional(),
+}).strict().refine((v) => v.packageId || v.custom, { message: 'Choose a package or type your own price', path: ['packageId'] });
+
 // ── Public (anonymous) ──────────────────────────────────────────────────────
 export const slugParam = z.object({ slug: z.string().trim().toLowerCase().regex(/^[a-z0-9-]{2,80}$/) });
 export const tokenParam = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{20,64}$/) });

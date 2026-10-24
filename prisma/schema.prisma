@@ -3261,6 +3261,10 @@ model CatalogItem {
   /// Shown on the public enquiry page.
   isPublic       Boolean            @default(true) @map("is_public")
   isPopular      Boolean            @default(false) @map("is_popular")
+  /// Added from the ready-made library and not yet checked by the studio: the price is only an example.
+  isExample      Boolean            @default(false) @map("is_example")
+  /// Which library template this came from, so it is not offered again after a rename.
+  templateKey    String?            @map("template_key") @db.VarChar(60)
   sortOrder      Int                @default(0) @map("sort_order")
   createdById    String?            @map("created_by_id") @db.Uuid
   createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)

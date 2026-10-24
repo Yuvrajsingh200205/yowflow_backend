@@ -3,6 +3,7 @@ import { prisma } from '../config/prisma';
 import { AuthContext } from '../types';
 import { conflict, notFound } from '../utils/errors';
 import { AuditRequestContext, recordAudit } from './audit.service';
+import { addDefaultKit } from './templateLibrary.service';
 
 /** The studio's price list: packages and add-ons that quotes are assembled from. */
 
@@ -72,7 +73,8 @@ export async function updateCatalogItem(auth: AuthContext, id: string, input: Pa
   }
   const { kind: _kind, ...rest } = input;
   void _kind; // an item never changes between package and add-on
-  const item = await prisma.catalogItem.update({ where: { id }, data: { ...rest, eventTypes: rest.eventTypes as never } });
+  // Editing an item means the studio has looked at it: its price is no longer just an example.
+  const item = await prisma.catalogItem.update({ where: { id }, data: { ...rest, eventTypes: rest.eventTypes as never, isExample: false } });
   await recordAudit(prisma, ctx, { action: 'UPDATE', entityType: 'CatalogItem', entityId: id, summary: `Catalogue item “${item.name}” updated`, oldData: { unitPrice: Number(existing.unitPrice), isActive: existing.isActive }, newData: { unitPrice: Number(item.unitPrice), isActive: item.isActive } });
   return present(item);
 }
@@ -84,31 +86,11 @@ export async function deleteCatalogItem(auth: AuthContext, id: string, ctx: Audi
   await recordAudit(prisma, ctx, { action: 'SOFT_DELETE', entityType: 'CatalogItem', entityId: id, summary: `Catalogue item “${item.name}” removed` });
 }
 
-/** A sensible first catalogue for a photography and film studio, so nobody starts from a blank page. */
-const STARTER: CatalogInput[] = [
-  { kind: 'PACKAGE', name: 'Wedding Essentials', category: 'Photography', description: 'Everything you need to remember the day, beautifully delivered.', unitPrice: 45000, pricingType: 'PER_DAY', unitLabel: 'day', taxRate: 18, sortOrder: 1,
-    inclusions: ['1 candid photographer', '1 traditional photographer', '300+ edited photographs', 'Online gallery with private link', 'Delivery in 21 days'] },
-  { kind: 'PACKAGE', name: 'Wedding Signature', category: 'Photography + Film', description: 'Photographs and a cinematic highlight film.', unitPrice: 85000, pricingType: 'PER_DAY', unitLabel: 'day', taxRate: 18, isPopular: true, sortOrder: 2,
-    inclusions: ['2 candid photographers', '1 traditional photographer', '1 cinematographer', '500+ edited photographs', '4–6 minute highlight film', 'Premium album (30 spreads)', 'Online gallery with private link'] },
-  { kind: 'PACKAGE', name: 'Wedding Cinematic', category: 'Photography + Film', description: 'The full production: team, drone, film and album.', unitPrice: 150000, pricingType: 'PER_DAY', unitLabel: 'day', taxRate: 18, sortOrder: 3,
-    inclusions: ['3 photographers', '2 cinematographers', 'Drone coverage', '800+ edited photographs', 'Cinematic film (8–10 minutes) + teaser', 'Two premium albums', 'Same-week sneak peeks'] },
-  { kind: 'ADDON', name: 'Drone coverage', category: 'Add-ons', description: 'Aerial shots of the venue and baraat.', unitPrice: 12000, taxRate: 18, sortOrder: 1 },
-  { kind: 'ADDON', name: 'Pre-wedding shoot', category: 'Add-ons', description: 'Half-day outdoor shoot with 50 edited photographs.', unitPrice: 25000, taxRate: 18, sortOrder: 2 },
-  { kind: 'ADDON', name: 'Extra album copy', category: 'Add-ons', description: 'Matching copy for parents (30 spreads).', unitPrice: 8000, taxRate: 18, allowQuantity: true, minQuantity: 1, maxQuantity: 6, unitLabel: 'copy', sortOrder: 3 },
-  { kind: 'ADDON', name: 'Same-day edit film', category: 'Add-ons', description: 'A short film played at the reception.', unitPrice: 30000, taxRate: 18, sortOrder: 4 },
-  { kind: 'ADDON', name: 'Extra photographer', category: 'Add-ons', description: 'One more photographer for the whole day.', unitPrice: 9000, pricingType: 'PER_DAY', unitLabel: 'day', taxRate: 18, sortOrder: 5 },
-];
-
+/** The default set (the most common packages and add-ons), for a studio that has not set up anything yet. */
 export async function seedStarterCatalog(auth: AuthContext, ctx: AuditRequestContext) {
   const existing = await prisma.catalogItem.count({ where: { organizationId: auth.organizationId, deletedAt: null } });
   if (existing > 0) throw conflict('Your catalogue already has items. Add or edit them instead.');
-  await prisma.catalogItem.createMany({
-    data: STARTER.map((i) => ({
-      organizationId: auth.organizationId, createdById: auth.userId, kind: i.kind, name: i.name, description: i.description ?? null, category: i.category ?? null, inclusions: i.inclusions ?? [],
-      pricingType: i.pricingType ?? 'FIXED', unitPrice: i.unitPrice, unitLabel: i.unitLabel ?? null, taxRate: i.taxRate ?? 0, allowQuantity: i.allowQuantity ?? false,
-      minQuantity: i.minQuantity ?? 1, maxQuantity: i.maxQuantity ?? null, isPopular: i.isPopular ?? false, sortOrder: i.sortOrder ?? 0,
-    })),
-  });
-  await recordAudit(prisma, ctx, { action: 'CREATE', entityType: 'CatalogItem', summary: `Starter catalogue created (${STARTER.length} items)` });
+  const { added } = await addDefaultKit(prisma, auth.organizationId, auth.userId);
+  await recordAudit(prisma, ctx, { action: 'CREATE', entityType: 'CatalogItem', summary: `Starter catalogue created (${added} items)` });
   return listCatalog(auth.organizationId, {});
 }

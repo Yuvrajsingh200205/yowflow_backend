@@ -908,6 +908,21 @@ export const openApiDocument = {
     [`${base}/catalog/starter`]: {
       post: { tags: ['Catalogue'], summary: 'Create the starter price list', description: 'Only for an empty catalogue (409 otherwise). Requires `CATALOG_MANAGE`.', responses: { 201: okResponse('Catalogue items'), ...COMMON_ERRORS } },
     },
+    [`${base}/catalog/templates`]: {
+      get: { tags: ['Catalogue'], summary: 'The ready-made library of packages and add-ons', description: 'Grouped by occasion, with `added` showing what the studio already has. Prices are examples. Requires `CATALOG_VIEW`, `CATALOG_MANAGE` or `QUOTATION_CREATE`.', responses: { 200: okResponse('Groups and templates'), ...COMMON_ERRORS } },
+    },
+    [`${base}/catalog/templates/import`]: {
+      post: { tags: ['Catalogue'], summary: 'Add chosen templates to the price list', description: 'Idempotent: anything already added (by template or name) is skipped. Added items are flagged `isExample` until edited or confirmed. Requires `CATALOG_MANAGE`.', responses: { 201: okResponse('Counts added and skipped'), ...COMMON_ERRORS } },
+    },
+    [`${base}/catalog/templates/confirm-prices`]: {
+      post: { tags: ['Catalogue'], summary: 'Confirm that the example prices are the studio’s real prices', description: 'Requires `CATALOG_MANAGE`.', responses: { 200: okResponse('Count confirmed'), ...COMMON_ERRORS } },
+    },
+    [`${base}/sales-setup/readiness`]: {
+      get: { tags: ['Sales setup'], summary: 'How ready the studio is to quote (for the get-started checklist)', responses: { 200: okResponse('Counts and flags'), ...COMMON_ERRORS } },
+    },
+    [`${base}/quotations/quick`]: {
+      post: { tags: ['Quotations'], summary: 'Quick quote: name, mobile and a package become a lead and a priced draft quote', description: 'Reuses an open lead with the same mobile number and event date. Requires `QUOTATION_CREATE` and `LEAD_CREATE`.', responses: { 201: okResponse('Quotation id, number, total and lead'), ...COMMON_ERRORS } },
+    },
     [`${base}/catalog/{id}`]: {
       patch: { tags: ['Catalogue'], summary: 'Update an item', description: 'Quotes already made keep their own snapshot. Requires `CATALOG_MANAGE`.', parameters: [PARAMS.id], responses: { 200: okResponse('Catalogue item'), ...COMMON_ERRORS } },
       delete: { tags: ['Catalogue'], summary: 'Delete an item (soft)', description: 'Requires `CATALOG_MANAGE`.', parameters: [PARAMS.id], responses: { 204: { description: 'Deleted' }, ...COMMON_ERRORS } },

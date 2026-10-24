@@ -13,6 +13,8 @@ import * as enquiry from '../services/enquiry.service';
 import * as booking from '../services/booking.service';
 import * as pdf from '../services/pdf.service';
 import * as reminders from '../services/reminders.service';
+import * as templates from '../services/templateLibrary.service';
+import * as quick from '../services/quickQuote.service';
 
 const pdfResponse = (res: Response, file: { buffer: Buffer; filename: string }) => {
   res.setHeader('Content-Type', 'application/pdf');
@@ -28,7 +30,12 @@ export const updateCatalogItem = asyncHandler(async (req, res) => sendSuccess(re
 export const deleteCatalogItem = asyncHandler(async (req, res) => { await catalog.deleteCatalogItem(requireAuthContext(req), req.params.id, auditContext(req)); return sendNoContent(res); });
 export const seedCatalog = asyncHandler(async (req, res) => sendCreated(res, await catalog.seedStarterCatalog(requireAuthContext(req), auditContext(req))));
 
+export const listTemplates = asyncHandler(async (req, res) => sendSuccess(res, await templates.listTemplates(requireAuthContext(req).organizationId)));
+export const importTemplates = asyncHandler(async (req, res) => sendCreated(res, await templates.importTemplates(requireAuthContext(req), req.body.keys, auditContext(req))));
+export const confirmPrices = asyncHandler(async (req, res) => sendSuccess(res, await templates.confirmPrices(requireAuthContext(req), auditContext(req))));
+
 // ── Setup ───────────────────────────────────────────────────────────────────
+export const readiness = asyncHandler(async (req, res) => sendSuccess(res, await setup.getReadiness(requireAuthContext(req).organizationId)));
 export const getSettings = asyncHandler(async (req, res) => sendSuccess(res, await setup.getSalesSettings(requireAuthContext(req).organizationId)));
 export const updateSettings = asyncHandler(async (req, res) => sendSuccess(res, await setup.updateSalesSettings(requireAuthContext(req), req.body, auditContext(req))));
 export const getEnquiryPage = asyncHandler(async (req, res) => sendSuccess(res, await setup.getEnquiryPage(requireAuthContext(req).organizationId)));
@@ -42,7 +49,8 @@ export const checkDate = asyncHandler(async (req, res) => {
   return sendSuccess(res, { ...day, sellable: availability.isSellable(day.status), reason: availability.reasonFor(day.status) });
 });
 
-// ── Quotes (staff) ──────────────────────────────────────────────────────────
+// ── Quotes (staff) ───
+export const quickQuote = asyncHandler(async (req, res) => sendCreated(res, await quick.createQuickQuote(requireAuthContext(req), req.body, auditContext(req))));
 export const quoteFromLead = asyncHandler(async (req, res) => sendCreated(res, await engine.createQuoteForLead(requireAuthContext(req), req.body, auditContext(req))));
 export const updateQuote = asyncHandler(async (req, res) => sendSuccess(res, await engine.updateQuoteContent(requireAuthContext(req), req.params.id, req.body, auditContext(req))));
 export const sendQuote = asyncHandler(async (req, res) => sendSuccess(res, await engine.sendQuote(requireAuthContext(req), req.params.id, req.body, auditContext(req))));
