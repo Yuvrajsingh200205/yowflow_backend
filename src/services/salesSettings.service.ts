@@ -11,6 +11,9 @@ const SETTING_FIELDS = [
   'quoteValidDays', 'advancePercent', 'balanceDueDaysBefore', 'capacityPerDay', 'minLeadDays', 'maxAdvanceDays', 'remindersEnabled', 'remindersEmailClients',
 ] as const;
 
+/** Studio details that live on the organisation but are edited here, so one permission covers the whole setup. */
+const ORG_FIELDS = ['gstNumber', 'phone', 'email', 'website', 'addressLine', 'city', 'state', 'postalCode'] as const;
+
 export async function getSalesSettings(organizationId: string) {
   const [org, setting] = await Promise.all([
     prisma.organization.findUniqueOrThrow({
@@ -43,14 +46,15 @@ export async function getSalesSettings(organizationId: string) {
 export async function updateSalesSettings(auth: AuthContext, input: Record<string, unknown>, ctx: AuditRequestContext) {
   const data: Record<string, unknown> = {};
   for (const key of SETTING_FIELDS) if (key in input && input[key] !== undefined) data[key] = input[key];
-  const orgData = 'gstNumber' in input && input.gstNumber !== undefined ? { gstNumber: input.gstNumber as string | null } : null;
+  const orgFields = ORG_FIELDS.filter((key) => key in input && input[key] !== undefined);
+  const orgData = orgFields.length ? Object.fromEntries(orgFields.map((key) => [key, input[key] as string | null])) : null;
 
   await prisma.$transaction(async (tx) => {
     if (Object.keys(data).length) {
       await tx.organizationSetting.upsert({ where: { organizationId: auth.organizationId }, create: { organizationId: auth.organizationId, ...data }, update: data });
     }
     if (orgData) await tx.organization.update({ where: { id: auth.organizationId }, data: orgData });
-    await recordAudit(tx, ctx, { action: 'UPDATE', entityType: 'OrganizationSetting', entityId: auth.organizationId, summary: 'Sales and business settings updated', newData: { fields: [...Object.keys(data), ...(orgData ? ['gstNumber'] : [])] } });
+    await recordAudit(tx, ctx, { action: 'UPDATE', entityType: 'OrganizationSetting', entityId: auth.organizationId, summary: 'Sales and business settings updated', newData: { fields: [...Object.keys(data), ...orgFields] } });
   });
   return getSalesSettings(auth.organizationId);
 }

@@ -50,13 +50,21 @@ const empty = z.literal('').transform(() => null);
 export const salesSettingsSchema = z.object({
   // printed on quotes and invoices
   upiId: z.union([upi, empty]).nullable().optional(),
-  bankAccountName: z.union([text(160), empty]).nullable().optional(),
-  bankName: z.union([text(120), empty]).nullable().optional(),
+  bankAccountName: z.union([empty, text(160), empty]).nullable().optional(),
+  bankName: z.union([empty, text(120), empty]).nullable().optional(),
   bankAccountNumber: z.union([z.string().trim().regex(/^\d{6,34}$/, 'Digits only'), empty]).nullable().optional(),
   bankIfsc: z.union([ifsc, empty]).nullable().optional(),
-  defaultTerms: z.union([text(6000), empty]).nullable().optional(),
+  defaultTerms: z.union([empty, text(6000), empty]).nullable().optional(),
   brandColor: z.union([z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use a colour like #B4F03C'), empty]).nullable().optional(),
   gstNumber: z.union([gstin, empty]).nullable().optional(),
+  // the studio's contact details as they appear on quotes and invoices
+  phone: z.union([z.string().trim().regex(/^\+?[0-9 ()-]{7,20}$/, 'Enter a phone number with 7 to 15 digits'), empty]).nullable().optional(),
+  email: z.union([z.string().trim().toLowerCase().email('Enter a valid email').max(160), empty]).nullable().optional(),
+  website: z.union([z.string().trim().url('Enter a full web address such as https://example.com').max(200), empty]).nullable().optional(),
+  addressLine: z.union([empty, text(255), empty]).nullable().optional(),
+  city: z.union([empty, text(80), empty]).nullable().optional(),
+  state: z.union([empty, text(80), empty]).nullable().optional(),
+  postalCode: z.union([empty, text(16), empty]).nullable().optional(),
   // sales defaults
   quoteValidDays: z.coerce.number().int().min(1).max(365).optional(),
   advancePercent: z.coerce.number().int().min(0).max(100).optional(),
@@ -72,9 +80,9 @@ export const salesSettingsSchema = z.object({
 
 export const enquiryPageSchema = z.object({
   isEnabled: z.boolean().optional(),
-  headline: z.union([text(160), empty]).nullable().optional(),
-  intro: z.union([text(2000), empty]).nullable().optional(),
-  thankYouMessage: z.union([text(1000), empty]).nullable().optional(),
+  headline: z.union([empty, text(160), empty]).nullable().optional(),
+  intro: z.union([empty, text(2000), empty]).nullable().optional(),
+  thankYouMessage: z.union([empty, text(1000), empty]).nullable().optional(),
   autoQuoteMode: z.enum(['OFF', 'APPROVAL', 'AUTO']).optional(),
   showPrices: z.boolean().optional(),
   askGuestCount: z.boolean().optional(),
@@ -85,7 +93,7 @@ export const enquiryPageSchema = z.object({
 export const blockedDateSchema = z.object({
   startDate: dateOnly,
   endDate: dateOnly,
-  reason: z.union([text(200), empty]).nullable().optional(),
+  reason: z.union([empty, text(200), empty]).nullable().optional(),
 }).strict().refine((v) => v.endDate >= v.startDate, { path: ['endDate'], message: 'The end date cannot be before the start date' });
 
 export const rangeQuery = z.object({ from: dateOnly, to: dateOnly });

@@ -60,6 +60,17 @@ describe('catalogue and sales setup', () => {
     for (const bad of [{ upiId: 'not a upi' }, { bankIfsc: 'XYZ' }, { bankAccountNumber: 'abc' }, { gstNumber: '123' }, { brandColor: 'red' }, { advancePercent: 120 }, { capacityPerDay: 0 }, { unknown: 1 }]) {
       expect((await f.staff.put(`${base}/sales-setup/settings`).send(bad)).status, JSON.stringify(bad)).toBe(400);
     }
+    // the studio's contact details are edited here too, and printed on quotes and invoices
+    const contact = await f.staff.put(`${base}/sales-setup/settings`).send({
+      phone: '+91 98765 43210', email: 'Hello@Lumen.test', website: 'https://lumen.test', addressLine: '12, MG Road', city: 'Pune', state: 'Maharashtra', postalCode: '411001',
+    }).expect(200);
+    expect(contact.body.data.business).toMatchObject({ phone: '+91 98765 43210', email: 'hello@lumen.test', website: 'https://lumen.test', addressLine: '12, MG Road', city: 'Pune', state: 'Maharashtra', postalCode: '411001' });
+    for (const bad of [{ phone: 'call me' }, { email: 'nope' }, { website: 'lumen.test' }, { postalCode: '1'.repeat(17) }]) {
+      expect((await f.staff.put(`${base}/sales-setup/settings`).send(bad)).status, JSON.stringify(bad)).toBe(400);
+    }
+    await f.staff.put(`${base}/sales-setup/settings`).send({ website: '', addressLine: '' }).expect(200);
+    expect((await f.staff.get(`${base}/sales-setup/settings`)).body.data.business).toMatchObject({ website: null, addressLine: null, city: 'Pune' });
+
     // blanking a field clears it
     await f.staff.put(`${base}/sales-setup/settings`).send({ upiId: '' }).expect(200);
     expect((await f.staff.get(`${base}/sales-setup/settings`)).body.data.upiId).toBeNull();

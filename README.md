@@ -16,6 +16,7 @@ deployable: it shares no code, build or deploy pipeline with the Next.js fronten
 ## Highlights
 
 - Multi-tenant studio CRM: leads (incl. Meta Lead Ads), clients, projects, shoots, freelancers, finance, galleries, RBAC and audit log.
+- **Quote in seconds**: public booking page with live availability, instant or approval-based quotes, a tracked customer quote page with online acceptance, booking into a project with payment plan and draft invoice, quote and invoice PDFs (GST, UPI QR), daily reminders.
 - Self-serve signup with tenant provisioning, e-mail verification and password reset.
 - API keys (SHA-256 hashed, read-only or full, revocable) and Razorpay billing in test mode.
 

@@ -34,6 +34,7 @@ Copy `.env.example` to `.env` and fill it in. **Never commit `.env`.**
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_SECURE` / `MAIL_FROM` | production | Outbound mail. Without `SMTP_HOST` mail is logged (development) and **production refuses to start sending** |
 | `BRAND_NAME` / `BRAND_COOKIE_PREFIX` / `BRAND_SUPPORT_EMAIL` | | White-label identity. Cookie prefix must match the frontend |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | | Optional billing. `rzp_test_` keys = test mode; unset = billing disabled (503) |
+| `CRON_SECRET` | for reminders | 16+ chars (`openssl rand -hex 32`). Vercel Cron sends it as a bearer token to `/api/v1/internal/cron/reminders` (scheduled daily in `vercel.json`). Unset = the endpoint answers 404 and no reminder is ever sent |
 | `SEED_*` | | Bootstrap only |
 | `SEED_DEMO_DATA` | | **Refused in production** |
 
@@ -53,6 +54,11 @@ npm start
 ```
 
 Sign in with `SEED_ADMIN_EMAIL` and change the password immediately.
+
+### Releases that add database tables or permissions
+
+- `npx prisma migrate deploy` must run against the production database **before** the new code serves traffic: the quote engine adds tables and columns (migrations `20261024120000_quote_engine` and `20261024121000_quote_item_inclusions`), and queries on existing tables (quotations, organisation settings) fail until they are applied.
+- New permission keys (`CATALOG_*`, `BOOKING_SETUP_MANAGE`) reach existing studios' system roles automatically: each new serverless instance checks the catalogue once at start (one read when nothing changed), and `npm run permissions:sync` does the same on demand. Custom roles are never changed: grant the new permissions to them from *Roles & Permissions*.
 
 ## 3. Subsequent deployments
 
@@ -161,5 +167,8 @@ CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
 - [ ] `SEED_DEMO_DATA` is `false`
 - [ ] `NODE_ENV=production`
 - [ ] The seeded admin password has been changed
+- [ ] `CRON_SECRET` is set (payment and quote reminders depend on it) and the Vercel Cron job shows up under the project's *Settings → Cron Jobs*
+- [ ] SMTP works: send yourself a quote by email from *Quotes* (customers' quote links and enquiry alerts use it)
+- [ ] The quote and invoice PDFs render the ₹ sign: the bundled `assets/fonts` folder is listed in `vercel.json` `includeFiles`
 - [ ] `/health/ready` returns 200 from inside the network
 - [ ] Backups and point-in-time recovery are enabled

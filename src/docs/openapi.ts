@@ -295,7 +295,10 @@ export const openApiDocument = {
     { name: 'Personal Todos', description: 'Private employee to-do list, visible only to the signed-in user' },
     { name: 'Deliveries', description: 'Client deliverables' },
     { name: 'Attendance', description: 'Attendance and leave' },
-    { name: 'Quotations', description: 'Proposals' },
+    { name: 'Quotations', description: 'Quotes: built from the price list, sent to customers, tracked, and booked on acceptance' },
+    { name: 'Catalogue', description: 'Packages and add-ons that quotes and the booking page are built from' },
+    { name: 'Sales setup', description: 'Booking page, availability, closed dates, business details and reminders' },
+    { name: 'Booking page', description: 'Public, anonymous: a studio’s booking page and the customer’s quote (the slug or token is the credential)' },
     { name: 'Invoices', description: 'Receivables' },
     { name: 'Payments', description: 'Cash received and its allocation' },
     { name: 'Expenses', description: 'Cost ledger and approvals' },
@@ -895,6 +898,96 @@ export const openApiDocument = {
       },
       createBody: 'CreateQuotationRequest',
     }),
+
+
+    // ── Quote in seconds ────────────────────────────────────────────────────
+    [`${base}/catalog`]: {
+      get: { tags: ['Catalogue'], summary: 'List packages and add-ons', description: 'Requires `CATALOG_VIEW`, `CATALOG_MANAGE` or `QUOTATION_CREATE`.', parameters: [enumParam('kind', ['PACKAGE', 'ADDON']), { name: 'active', in: 'query', schema: { type: 'string', enum: ['true', 'false'] } }, PARAMS.search], responses: { 200: okResponse('Catalogue items'), ...COMMON_ERRORS } },
+      post: { tags: ['Catalogue'], summary: 'Create a package or add-on', description: 'Requires `CATALOG_MANAGE`. Names are unique per kind.', responses: { 201: okResponse('Catalogue item'), ...COMMON_ERRORS } },
+    },
+    [`${base}/catalog/starter`]: {
+      post: { tags: ['Catalogue'], summary: 'Create the starter price list', description: 'Only for an empty catalogue (409 otherwise). Requires `CATALOG_MANAGE`.', responses: { 201: okResponse('Catalogue items'), ...COMMON_ERRORS } },
+    },
+    [`${base}/catalog/{id}`]: {
+      patch: { tags: ['Catalogue'], summary: 'Update an item', description: 'Quotes already made keep their own snapshot. Requires `CATALOG_MANAGE`.', parameters: [PARAMS.id], responses: { 200: okResponse('Catalogue item'), ...COMMON_ERRORS } },
+      delete: { tags: ['Catalogue'], summary: 'Delete an item (soft)', description: 'Requires `CATALOG_MANAGE`.', parameters: [PARAMS.id], responses: { 204: { description: 'Deleted' }, ...COMMON_ERRORS } },
+    },
+
+    [`${base}/sales-setup/settings`]: {
+      get: { tags: ['Sales setup'], summary: 'Business details, payment details, quote defaults, availability rules and reminders', responses: { 200: okResponse('Settings'), ...COMMON_ERRORS } },
+      put: { tags: ['Sales setup'], summary: 'Update those settings', description: 'Partial update. UPI, IFSC, GSTIN, phone, email and website are validated; blank text clears a field. Requires `BOOKING_SETUP_MANAGE`.', responses: { 200: okResponse('Settings'), ...COMMON_ERRORS } },
+    },
+    [`${base}/sales-setup/enquiry-page`]: {
+      get: { tags: ['Sales setup'], summary: 'The booking page settings (slug, copy, quote mode, questions)', responses: { 200: okResponse('Booking page'), ...COMMON_ERRORS } },
+      put: { tags: ['Sales setup'], summary: 'Update the booking page', description: '`autoQuoteMode`: `OFF` (collect enquiries only), `APPROVAL` (a draft waits for staff) or `AUTO` (the customer gets the quote at once). Requires `BOOKING_SETUP_MANAGE`.', responses: { 200: okResponse('Booking page'), ...COMMON_ERRORS } },
+    },
+    [`${base}/sales-setup/blocked-dates`]: {
+      get: { tags: ['Sales setup'], summary: 'List closed dates', parameters: [PARAMS.from, PARAMS.to], responses: { 200: okResponse('Closed date ranges'), ...COMMON_ERRORS } },
+      post: { tags: ['Sales setup'], summary: 'Close a range of dates', description: 'Requires `BOOKING_SETUP_MANAGE`. Existing bookings are not affected.', responses: { 201: okResponse('Closed date range'), ...COMMON_ERRORS } },
+    },
+    [`${base}/sales-setup/blocked-dates/{id}`]: {
+      delete: { tags: ['Sales setup'], summary: 'Reopen a range of dates', parameters: [PARAMS.id], responses: { 204: { description: 'Reopened' }, ...COMMON_ERRORS } },
+    },
+    [`${base}/sales-setup/availability`]: {
+      get: { tags: ['Sales setup'], summary: 'Per-day status with the bookings on each day', description: 'At most 400 days. Status: `AVAILABLE`, `LIMITED`, `FULL`, `CLOSED`, `PAST`, `TOO_SOON`, `TOO_FAR`.', parameters: [{ ...PARAMS.from, required: true }, { ...PARAMS.to, required: true }], responses: { 200: okResponse('Days'), ...COMMON_ERRORS } },
+    },
+    [`${base}/sales-setup/availability/check`]: {
+      get: { tags: ['Sales setup'], summary: 'Can this date be sold?', description: 'Used for warnings when staff pick a date. Pass `excludeProjectId` when editing a project so it does not count against itself.', parameters: [{ name: 'date', in: 'query', required: true, schema: { type: 'string', format: 'date' } }, uuidParam('excludeProjectId')], responses: { 200: okResponse('Status, sellable and a plain-language reason'), ...COMMON_ERRORS } },
+    },
+
+    [`${base}/quotations/today`]: {
+      get: { tags: ['Quotations'], summary: 'What needs a nudge today', description: 'Quotes to review, unopened, opened but not accepted, expiring; payments due (only with `PAYMENT_VIEW`); lead follow-ups. Rows carry a ready-made `wa.me` link.', responses: { 200: okResponse('Today list'), ...COMMON_ERRORS } },
+    },
+    [`${base}/quotations/from-lead`]: {
+      post: { tags: ['Quotations'], summary: 'Make a quote for a lead from the price list', description: 'The quote snapshots names, prices and tax. Remaining public add-ons are offered as optional lines. Requires `QUOTATION_CREATE`.', responses: { 201: okResponse('Quotation'), ...COMMON_ERRORS } },
+    },
+    [`${base}/quotations/{id}/send`]: {
+      post: { tags: ['Quotations'], summary: 'Send a quote by email, WhatsApp link or link', description: 'Also approves an enquiry draft and refreshes validity of an expired or declined quote. Returns the public URL and, when a phone is known, a `wa.me` URL. Requires `QUOTATION_UPDATE`.', parameters: [PARAMS.id], responses: { 200: okResponse('Quotation, publicUrl, emailed, whatsappUrl'), ...COMMON_ERRORS } },
+    },
+    [`${base}/quotations/{id}/convert`]: {
+      post: { tags: ['Quotations'], summary: 'Book a quote by hand', description: 'Creates the client (matched by phone), the project with one event per day, payment milestones and a draft invoice, and marks the lead won. A date that is full or closed returns 409 with `DATE_UNAVAILABLE` unless `overrideAvailability` is set by someone with `BOOKING_SETUP_MANAGE`. Requires `QUOTATION_UPDATE` and `PROJECT_CREATE`.', parameters: [PARAMS.id], responses: { 200: okResponse('Booking'), ...COMMON_ERRORS, 409: errorResponse('The date is taken') } },
+    },
+    [`${base}/quotations/{id}/events`]: {
+      get: { tags: ['Quotations'], summary: 'Activity timeline (sent, opened, accepted, questions…)', parameters: [PARAMS.id], responses: { 200: okResponse('Events'), ...COMMON_ERRORS } },
+    },
+    [`${base}/quotations/{id}/preview`]: {
+      get: { tags: ['Quotations'], summary: 'The quote as the customer sees it', description: 'Does not count as a view.', parameters: [PARAMS.id], responses: { 200: okResponse('Customer view'), ...COMMON_ERRORS } },
+    },
+    [`${base}/quotations/{id}/pdf`]: {
+      get: { tags: ['Quotations'], summary: 'Quotation PDF', parameters: [PARAMS.id], responses: { 200: { description: 'application/pdf' }, ...COMMON_ERRORS } },
+    },
+    [`${base}/invoices/{id}/pdf`]: {
+      get: { tags: ['Invoices'], summary: 'Invoice PDF with GST, bank details and a UPI QR code', parameters: [PARAMS.id], responses: { 200: { description: 'application/pdf' }, ...COMMON_ERRORS } },
+    },
+
+    [`${base}/public/enquiry/{slug}`]: {
+      get: { tags: ['Booking page'], summary: 'A studio’s public booking page', security: [], parameters: [{ name: 'slug', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: okResponse('Studio, packages, add-ons, rules'), 404: errorResponse('No such page, or it is switched off') } },
+      post: { tags: ['Booking page'], summary: 'Submit an enquiry', description: 'Creates (or reuses, by phone and date) a lead. In `AUTO` mode the response carries `quoteToken`. A taken date returns 409. Rate-limited per IP; a filled `website` field is treated as a bot and silently ignored.', security: [], parameters: [{ name: 'slug', in: 'path', required: true, schema: { type: 'string' } }], responses: { 201: okResponse('Received'), ...COMMON_ERRORS, 409: errorResponse('The date is taken'), 429: errorResponse('Too many requests') } },
+    },
+    [`${base}/public/enquiry/{slug}/availability`]: {
+      get: { tags: ['Booking page'], summary: 'Free or taken days (nothing about who booked)', security: [], parameters: [{ name: 'slug', in: 'path', required: true, schema: { type: 'string' } }, { ...PARAMS.from, required: true }, { ...PARAMS.to, required: true }], responses: { 200: okResponse('Days'), 404: errorResponse('No such page') } },
+    },
+    [`${base}/public/quotes/{token}`]: {
+      get: { tags: ['Booking page'], summary: 'The customer’s quote', description: 'The 256-bit token is the credential. Drafts are not visible. Opening it records a view (throttled); payment details appear only after acceptance.', security: [], parameters: [{ name: 'token', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: okResponse('Quote'), 404: errorResponse('Unknown token or a draft') } },
+    },
+    [`${base}/public/quotes/{token}/price`]: {
+      post: { tags: ['Booking page'], summary: 'Re-price with the customer’s add-on choices', description: 'Never changes stored data. Required lines cannot be switched off.', security: [], parameters: [{ name: 'token', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: okResponse('Quote'), ...COMMON_ERRORS } },
+    },
+    [`${base}/public/quotes/{token}/accept`]: {
+      post: { tags: ['Booking page'], summary: 'Accept the quote', description: 'Needs the typed name and `agree`. Re-prices server-side, then books: client, project, payment plan, draft invoice. If the date was just taken the acceptance is undone and 409 is returned.', security: [], parameters: [{ name: 'token', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: okResponse('Accepted quote and payment details'), ...COMMON_ERRORS, 409: errorResponse('Expired, closed or date taken') } },
+    },
+    [`${base}/public/quotes/{token}/decline`]: {
+      post: { tags: ['Booking page'], summary: 'Decline the quote', security: [], parameters: [{ name: 'token', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: okResponse('Declined'), 409: errorResponse('Not open to decline') } },
+    },
+    [`${base}/public/quotes/{token}/message`]: {
+      post: { tags: ['Booking page'], summary: 'Ask the studio a question', security: [], parameters: [{ name: 'token', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: okResponse('Sent'), ...COMMON_ERRORS } },
+    },
+    [`${base}/public/quotes/{token}/pdf`]: {
+      get: { tags: ['Booking page'], summary: 'The quote as a PDF', security: [], parameters: [{ name: 'token', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'application/pdf' }, 404: errorResponse('Unknown token or a draft') } },
+    },
+    [`${base}/internal/cron/reminders`]: {
+      get: { tags: ['System'], summary: 'Daily reminder job (Vercel Cron)', description: 'Sends payment and quote reminders once each. Needs `Authorization: Bearer <CRON_SECRET>`; returns 404 when `CRON_SECRET` is not configured.', security: [], responses: { 200: okResponse('Counts of what was sent'), 403: errorResponse('Wrong secret'), 404: errorResponse('Not configured') } },
+    },
 
     ...crudPaths({
       path: `${base}/invoices`,

@@ -16,8 +16,14 @@ async function grantAlwaysOnPermissions() {
   });
 }
 
-/** Upserts the in-code catalogue and grants newly added keys to system roles. */
-export async function syncPermissionCatalogue(): Promise<number> {
+/**
+ * Upserts the in-code catalogue and grants newly added keys to system roles.
+ *
+ * `quietWhenCurrent` is for serverless cold starts, where this runs on every new instance: when the catalogue
+ * already matches the database it returns after one read instead of re-asserting the always-on grants for
+ * every role.
+ */
+export async function syncPermissionCatalogue(opts: { quietWhenCurrent?: boolean } = {}): Promise<number> {
   const existing = await prisma.permission.findMany({
     select: { key: true, module: true, label: true, isSensitive: true },
   });
@@ -62,6 +68,7 @@ export async function syncPermissionCatalogue(): Promise<number> {
     });
   }
 
+  if (opts.quietWhenCurrent && !missing.length && !stale.length) return 0;
   await grantAlwaysOnPermissions();
 
   const created = missing.map((permission) => permission.key);

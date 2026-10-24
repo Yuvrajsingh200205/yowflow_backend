@@ -18,6 +18,6 @@
     "sourceMap": true,
     "declaration": false
   },
-  "include": ["src/**/*.ts", "prisma/**/*.ts", "tests/**/*.ts", "eslint.config.mjs"],
+  "include": ["src/**/*.ts", "api/**/*.ts", "scripts/**/*.ts", "prisma/**/*.ts", "tests/**/*.ts", "eslint.config.mjs"],
   "exclude": ["node_modules", "dist"]
 }

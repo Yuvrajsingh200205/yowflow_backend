@@ -73,7 +73,9 @@ export function listInvoices(
 }
 
 export function getInvoice(organizationId: string, id: string) {
+  // Invoices are cancelled, never soft-deleted, so the table has no deletedAt column to filter on.
   return findScoped(prisma.invoice, organizationId, id, 'Invoice', {
+    withDeleted: true,
     include: {
       client: true,
       project: { select: { id: true, projectNumber: true, name: true } },
@@ -251,7 +253,7 @@ export async function updateInvoiceStatus(
       status: InvoiceStatus;
       invoiceNumber: string;
       amountPaid: Prisma.Decimal;
-    }>(tx.invoice, auth.organizationId, id, 'Invoice');
+    }>(tx.invoice, auth.organizationId, id, 'Invoice', { withDeleted: true });
 
     if (status === 'CANCELLED' && money(invoice.amountPaid).greaterThan(ZERO())) {
       throw conflict(

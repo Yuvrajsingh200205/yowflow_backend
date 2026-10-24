@@ -21,6 +21,11 @@ const BUDGET: Array<[string, number]> = [
   ['/settings/workspace', 8],
   ['/settings/members', 3],
   ['/freelancers?limit=25', 6],
+  ['/quotations?limit=25', 5],
+  ['/quotations/today', 6],
+  ['/catalog', 3],
+  ['/sales-setup/settings', 4],
+  ['/sales-setup/enquiry-page', 4],
 ];
 
 describe('query budget (set PRISMA_COUNT_QUERIES=1)', () => {

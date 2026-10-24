@@ -23,6 +23,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "seed": "tsx prisma/seed.ts",
+    "permissions:sync": "tsx scripts/sync-permissions.ts",
     "db:setup": "prisma migrate deploy && prisma generate && npm run seed",
     "postinstall": "prisma generate",
     "vercel-build": "prisma generate"

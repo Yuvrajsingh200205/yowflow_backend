@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import fs from 'fs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, authed, base, login } from '../helpers/api';
 import { outbox } from '../../src/services/mailer.service';
 import { prisma, resetDatabase, seedTestOrganization } from '../helpers/factory';
@@ -10,6 +11,7 @@ const quoteOf = async (leadPhone = '9812345678') => prisma.quotation.findFirstOr
 describe('enquiry page → quotation → booking', () => {
   let f: SalesFixture;
   beforeEach(async () => { await resetDatabase(); outbox.length = 0; f = await seedSalesStudio(); });
+  afterEach(() => { vi.restoreAllMocks(); });
 
   describe('the public booking page', () => {
     it('shows only what the studio chose to publish, hides prices on request, and is off until enabled', async () => {
@@ -368,13 +370,35 @@ describe('enquiry page → quotation → booking', () => {
       const inv = await raw(f.staff.get(`${base}/invoices/${invoice.id}/pdf`)).expect(200);
       expect((inv.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
 
+      // The draft invoice from a booking can be opened and marked as issued (these lookups once failed: invoices have no deletedAt).
+      const opened = await f.staff.get(`${base}/invoices/${invoice.id}`).expect(200);
+      expect(opened.body.data).toMatchObject({ id: invoice.id, status: 'DRAFT' });
+      const issued = await f.staff.patch(`${base}/invoices/${invoice.id}/status`).send({ status: 'SENT' }).expect(200);
+      expect(issued.body.data.status).toBe('SENT');
+      expect(issued.body.data.sentAt).toBeTruthy();
+
       const other = authed(await login((await seedTestOrganization('studio-two')).admin));
+      expect((await other.get(`${base}/invoices/${invoice.id}`)).status).toBe(404);
+      expect((await other.patch(`${base}/invoices/${invoice.id}/status`).send({ status: 'CANCELLED' })).status).toBe(404);
       expect((await other.get(`${base}/quotations/${q.body.data.id}/pdf`)).status).toBe(404);
       expect((await other.get(`${base}/invoices/${invoice.id}/pdf`)).status).toBe(404);
       expect((await other.post(`${base}/quotations/${q.body.data.id}/send`).send({ channel: 'LINK' })).status).toBe(404);
       expect((await other.patch(`${base}/quotations/${q.body.data.id}`).send({ notes: 'hijack' })).status).toBe(404);
       expect((await other.post(`${base}/quotations/${q.body.data.id}/convert`).send({})).status).toBe(404);
       expect((await api().get(`${base}/quotations/${q.body.data.id}/pdf`)).status).toBe(401);
+    });
+
+    it('still produces a PDF when the bundled fonts are missing from a deployment', async () => {
+      const lead = await leadFor();
+      const q = await f.staff.post(`${base}/quotations/from-lead`).send({ leadId: lead.id, packageId: f.packageId }).expect(201);
+      // Pretend the font files were not deployed, then load the PDF module afresh so it notices.
+      const real = fs.existsSync;
+      vi.spyOn(fs, 'existsSync').mockImplementation((p) => (String(p).includes('NotoSans') ? false : real(p)));
+      vi.resetModules();
+      const { createQuotationPdf } = await import('../../src/services/pdf.service.js');
+      const file = await createQuotationPdf({ id: q.body.data.id, organizationId: f.org.organizationId });
+      expect(file.buffer.subarray(0, 5).toString()).toBe('%PDF-');
+      expect(file.buffer.length).toBeGreaterThan(1500);
     });
 
     it('still accepts the original client-based quotation request', async () => {

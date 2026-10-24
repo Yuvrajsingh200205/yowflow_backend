@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
@@ -5,6 +6,7 @@ import { prisma } from '../config/prisma';
 import { notFound } from '../utils/errors';
 import { paymentPlan, todayIn } from '../utils/quotePricing';
 import { toDateOnly } from '../utils/date';
+import { logger } from '../config/logger';
 
 /**
  * Quotation and invoice PDFs. The studio's own details, GST number, bank account and UPI QR are printed so the
@@ -22,7 +24,15 @@ const LEFT = 46;
 const RIGHT = 549;
 const WIDTH = RIGHT - LEFT;
 
-const inr = (n: number) => `₹${new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)}`;
+/**
+ * If the bundled fonts did not make it into a deployment, the PDF is still produced: with a standard font and
+ * "Rs." (a standard font has no rupee sign) instead of failing the request.
+ */
+const HAVE_FONTS = fs.existsSync(REGULAR) && fs.existsSync(BOLD);
+if (!HAVE_FONTS) logger.warn({ dir: FONT_DIR }, 'PDF fonts are missing; falling back to Helvetica and "Rs."');
+const RUPEE = HAVE_FONTS ? '₹' : 'Rs. ';
+
+const inr = (n: number) => `${RUPEE}${new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)}`;
 const fmtDate = (d?: Date | string | null) => (d ? new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(d)) : '—');
 const label = (s?: string | null) => (s ?? '').replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
 const safeHex = (c?: string | null) => (c && /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#9ac72f');
@@ -33,8 +43,8 @@ interface Row { service: string; description?: string | null; inclusions?: strin
 
 function start(title: string) {
   const doc = new PDFDocument({ size: 'A4', margin: LEFT, bufferPages: true, info: { Title: title } });
-  doc.registerFont('r', REGULAR);
-  doc.registerFont('b', BOLD);
+  doc.registerFont('r', HAVE_FONTS ? REGULAR : 'Helvetica');
+  doc.registerFont('b', HAVE_FONTS ? BOLD : 'Helvetica-Bold');
   const chunks: Buffer[] = [];
   doc.on('data', (c: Buffer) => chunks.push(c));
   const done = new Promise<Buffer>((resolve, reject) => { doc.on('end', () => resolve(Buffer.concat(chunks))); doc.on('error', reject); });
