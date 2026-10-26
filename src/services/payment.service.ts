@@ -182,7 +182,12 @@ async function applyAllocations(
  * notification and audit entry are one atomic unit — a failure at any step
  * rolls the whole thing back (§17, §34).
  */
-export async function createPayment(
+/**
+ * The payment itself, inside a transaction somebody else owns. A project created together with its advance uses
+ * this directly, so either both exist or neither does.
+ */
+export async function recordPayment(
+  tx: Tx,
   auth: AuthContext,
   input: CreatePaymentInput,
   ctx: AuditRequestContext,
@@ -190,82 +195,88 @@ export async function createPayment(
   const amount = round2(money(input.amount));
   if (amount.lessThanOrEqualTo(ZERO())) throw badRequest('Payment amount must be greater than zero');
 
-  return serializable(async (tx) => {
-    const client = await tx.client.findFirst({
-      where: { id: input.clientId, organizationId: auth.organizationId, deletedAt: null },
-      select: { id: true, displayName: true },
-    });
-    if (!client) throw notFound('Client');
-
-    if (input.projectId) {
-      const project = await tx.project.findFirst({
-        where: scopedProjectWhere(auth, { id: input.projectId }),
-        select: { id: true },
-      });
-      if (!project) throw notFound('Project');
-    }
-
-    // Same reference twice is a duplicate submission, not a second payment.
-    if (input.transactionReference) {
-      const duplicate = await tx.payment.findFirst({
-        where: {
-          organizationId: auth.organizationId,
-          transactionReference: input.transactionReference,
-        },
-        select: { id: true, paymentNumber: true },
-      });
-      if (duplicate) {
-        throw conflict(
-          `A payment with reference "${input.transactionReference}" already exists (${duplicate.paymentNumber})`,
-          [{ field: 'transactionReference', message: 'Must be unique' }],
-        );
-      }
-    }
-
-    const paymentNumber = await nextDocumentNumber(tx, auth.organizationId, 'PAYMENT');
-
-    const payment = await tx.payment.create({
-      data: {
-        organizationId: auth.organizationId,
-        paymentNumber,
-        clientId: input.clientId,
-        projectId: input.projectId,
-        amount,
-        allocatedAmount: 0,
-        paymentDate: toDateOnly(input.paymentDate),
-        paymentMethod: input.paymentMethod ?? 'UPI',
-        status: PaymentStatus.COMPLETED,
-        transactionReference: input.transactionReference,
-        notes: input.notes,
-        receivedById: auth.userId,
-      },
-    });
-
-    await applyAllocations(
-      tx,
-      payment.id,
-      auth.organizationId,
-      input.clientId,
-      amount,
-      input.allocations ?? [],
-    );
-
-    await recordAudit(tx, ctx, {
-      action: 'PAYMENT_RECORDED',
-      entityType: 'Payment',
-      entityId: payment.id,
-      summary: `Payment ${paymentNumber} of ${amount.toFixed(2)} recorded for ${client.displayName}`,
-      newData: { ...payment, allocations: input.allocations ?? [] },
-    });
-
-    return tx.payment.findUniqueOrThrow({
-      where: { id: payment.id },
-      include: {
-        allocations: { include: { invoice: { select: { id: true, invoiceNumber: true, status: true } } } },
-        client: { select: { id: true, displayName: true } },
-      },
-    });
+  const client = await tx.client.findFirst({
+    where: { id: input.clientId, organizationId: auth.organizationId, deletedAt: null },
+    select: { id: true, displayName: true },
   });
+  if (!client) throw notFound('Client');
+
+  if (input.projectId) {
+    const project = await tx.project.findFirst({
+      where: scopedProjectWhere(auth, { id: input.projectId }),
+      select: { id: true },
+    });
+    if (!project) throw notFound('Project');
+  }
+
+  // Same reference twice is a duplicate submission, not a second payment.
+  if (input.transactionReference) {
+    const duplicate = await tx.payment.findFirst({
+      where: {
+        organizationId: auth.organizationId,
+        transactionReference: input.transactionReference,
+      },
+      select: { id: true, paymentNumber: true },
+    });
+    if (duplicate) {
+      throw conflict(
+        `A payment with reference "${input.transactionReference}" already exists (${duplicate.paymentNumber})`,
+        [{ field: 'transactionReference', message: 'Must be unique' }],
+      );
+    }
+  }
+
+  const paymentNumber = await nextDocumentNumber(tx, auth.organizationId, 'PAYMENT');
+
+  const payment = await tx.payment.create({
+    data: {
+      organizationId: auth.organizationId,
+      paymentNumber,
+      clientId: input.clientId,
+      projectId: input.projectId,
+      amount,
+      allocatedAmount: 0,
+      paymentDate: toDateOnly(input.paymentDate),
+      paymentMethod: input.paymentMethod ?? 'UPI',
+      status: PaymentStatus.COMPLETED,
+      transactionReference: input.transactionReference,
+      notes: input.notes,
+      receivedById: auth.userId,
+    },
+  });
+
+  await applyAllocations(
+    tx,
+    payment.id,
+    auth.organizationId,
+    input.clientId,
+    amount,
+    input.allocations ?? [],
+  );
+
+  await recordAudit(tx, ctx, {
+    action: 'PAYMENT_RECORDED',
+    entityType: 'Payment',
+    entityId: payment.id,
+    summary: `Payment ${paymentNumber} of ${amount.toFixed(2)} recorded for ${client.displayName}`,
+    newData: { ...payment, allocations: input.allocations ?? [] },
+  });
+
+  return tx.payment.findUniqueOrThrow({
+    where: { id: payment.id },
+    include: {
+      allocations: { include: { invoice: { select: { id: true, invoiceNumber: true, status: true } } } },
+      client: { select: { id: true, displayName: true } },
+    },
+  });
+}
+
+export async function createPayment(
+  auth: AuthContext,
+  input: CreatePaymentInput,
+  ctx: AuditRequestContext,
+) {
+  return serializable((tx) => recordPayment(tx, auth, input, ctx));
 }
 
 /** Allocates an already-recorded payment across invoices (§18). */

@@ -148,6 +148,14 @@ const embeddedProjectShootSchema = z.object({
   })).max(30).optional(),
 });
 
+/** An advance taken when the booking is made. It is saved in the same step as the project, so a failure leaves neither behind. */
+const advancePaymentSchema = z.object({
+  amount: z.coerce.number().positive('Enter an amount above zero').max(100_000_000),
+  paymentDate: dateOnly,
+  paymentMethod: z.enum(['CASH', 'UPI', 'BANK_TRANSFER', 'CREDIT_CARD', 'DEBIT_CARD', 'CHEQUE', 'OTHER']).optional(),
+  notes: z.string().trim().max(2000).optional(),
+}).strict();
+
 const projectInputSchema = z.object({
   clientId: uuid.optional(),
   client: embeddedProjectClientSchema.optional(),
@@ -186,6 +194,7 @@ const projectInputSchema = z.object({
     .max(50)
     .optional(),
   shoots: z.array(embeddedProjectShootSchema).max(30).optional(),
+  advancePayment: advancePaymentSchema.optional(),
 });
 
 /** A custom label is required whenever the generic OTHER project type is used. */
@@ -229,7 +238,7 @@ export const createProjectSchema = projectInputSchema.superRefine((value, ctx) =
 
 export const updateProjectSchema = projectInputSchema
   .partial()
-  .omit({ clientId: true, client: true, events: true, leadId: true, tasks: true, shoots: true, status: true })
+  .omit({ clientId: true, client: true, events: true, leadId: true, tasks: true, shoots: true, status: true, advancePayment: true })
   .superRefine(requireCustomServiceForOther);
 
 export const projectStatusSchema = z.object({

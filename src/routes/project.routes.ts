@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as controller from '../controllers/project.controller';
 import * as opsController from '../controllers/ops.controller';
 import { validate } from '../middleware/validate';
+import { idempotent } from '../middleware/idempotency';
 import { requireAnyPermission, requirePermission } from '../middleware/rbac';
 import { idParam } from '../validators/common.validator';
 import * as pv from '../validators/portal.validator';
@@ -47,6 +48,8 @@ projectRouter.post(
   '/',
   requirePermission('PROJECT_CREATE'),
   validate({ body: createProjectSchema }),
+  // Retrying after a timeout replays the first answer instead of making a second project.
+  idempotent(),
   controller.create,
 );
 projectRouter.get('/:id/client-assets', requirePermission('FILE_VIEW'), validate({ params: idParam }), controller.listClientAssets);

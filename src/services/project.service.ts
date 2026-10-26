@@ -1,5 +1,6 @@
 import {
   CrewRole,
+  PaymentMethod,
   Prisma,
   ProjectStatus,
   ProjectType,
@@ -17,6 +18,7 @@ import { badRequest, conflict, forbidden, notFound } from '../utils/errors';
 import { dateRangeFilter } from '../utils/date';
 import { AuthContext } from '../types';
 import { AuditRequestContext, recordAudit } from './audit.service';
+import { recordPayment } from './payment.service';
 
 const SORTABLE = ['createdAt', 'weddingDate', 'name', 'projectNumber', 'totalQuotation'] as const;
 const BOOKING_BLOCKING_SHOOT_STATUSES: ShootStatus[] = [ShootStatus.SCHEDULED, ShootStatus.IN_PROGRESS, ShootStatus.COMPLETED];
@@ -617,6 +619,8 @@ export interface CreateProjectInput {
   otherClientDetails?: string;
   notes?: string;
   managerId?: string;
+  /** Recorded in the same transaction as the project: if either fails, neither is saved. */
+  advancePayment?: { amount: Prisma.Decimal.Value; paymentDate: string; paymentMethod?: PaymentMethod; notes?: string };
   events?: Array<{
     name: string;
     eventTypeId?: string;
@@ -740,6 +744,10 @@ export async function createProject(
 
     if (input.tasks?.length) await createProjectTasks(tx, auth, project.id, project.name, clientId, input.tasks);
     if (input.shoots?.length) await createProjectShoots(tx, auth, project.id, input.shoots);
+    if (input.advancePayment) {
+      if (!auth.permissions.has('PAYMENT_CREATE')) throw forbidden('PAYMENT_CREATE permission is required to record an advance.');
+      await recordPayment(tx, auth, { clientId, projectId: project.id, amount: input.advancePayment.amount, paymentDate: input.advancePayment.paymentDate, paymentMethod: input.advancePayment.paymentMethod, notes: input.advancePayment.notes ?? 'Advance booking amount' }, ctx);
+    }
 
     const createdProject = await loadCreatedProject(tx, auth.organizationId, project.id);
 

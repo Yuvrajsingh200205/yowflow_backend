@@ -599,6 +599,70 @@ describe('CRM: clients, projects, events, shoots', () => {
     expect(await prisma.project.count()).toBe(before);
   });
 
+  describe('creating a project is all or nothing', () => {
+    const body = (over: Record<string, unknown> = {}) => ({
+      client: { displayName: 'Atomic Couple', primaryPhone: '9876501234' }, name: 'Atomic Couple — Wedding', type: 'WEDDING', weddingDate: '2026-12-14', totalQuotation: '200000.00',
+      advancePayment: { amount: 50000, paymentDate: '2026-10-20', paymentMethod: 'UPI' }, ...over,
+    });
+    const counts = async () => ({ projects: await prisma.project.count(), clients: await prisma.client.count(), payments: await prisma.payment.count() });
+
+    it('saves the project, its client and its advance together', async () => {
+      const res = await authed(token).post(`${base}/projects`).send(body()).expect(201);
+      const payment = await prisma.payment.findFirstOrThrow({ where: { projectId: res.body.data.id } });
+      expect(Number(payment.amount)).toBe(50000);
+      expect(payment).toMatchObject({ status: 'COMPLETED', paymentMethod: 'UPI', clientId: res.body.data.client.id });
+      expect(await counts()).toEqual({ projects: 1, clients: 1, payments: 1 });
+    });
+
+    it('saves nothing when the advance cannot be recorded (no payment permission)', async () => {
+      await prisma.rolePermission.deleteMany({ where: { roleId: org.roleIds['Admin'], permission: { key: 'PAYMENT_CREATE' } } });
+      const manager = authed(token); // permissions are read on every request
+      const before = await counts();
+      const res = await manager.post(`${base}/projects`).send(body());
+      expect(res.body.error.message).toMatch(/PAYMENT_CREATE/);
+      expect(res.status).toBe(403);
+      expect(await counts()).toEqual(before); // no project, no new client, no payment
+
+      // the same form without an advance goes through, so fixing the problem is enough
+      const fixed = await manager.post(`${base}/projects`).send(body({ advancePayment: undefined }));
+      expect(fixed.status).toBe(201);
+      expect(await prisma.project.count()).toBe(before.projects + 1);
+    });
+
+    it('saves nothing when a shoot’s crew member does not exist, advance included', async () => {
+      const before = await counts();
+      const res = await authed(token).post(`${base}/projects`).send(body({ shoots: [{ title: 'Ceremony', shootDate: '2026-12-14', crewAssignments: [{ userId: '00000000-0000-4000-8000-000000000000', role: 'PHOTOGRAPHER' }] }] }));
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      expect(await counts()).toEqual(before);
+    });
+
+    it('rejects an advance that makes no sense before anything is saved', async () => {
+      const before = await counts();
+      for (const advancePayment of [{ amount: 0, paymentDate: '2026-10-20' }, { amount: -5, paymentDate: '2026-10-20' }, { amount: 100, paymentDate: 'yesterday' }, { amount: 100, paymentDate: '2026-10-20', paymentMethod: 'BARTER' }]) {
+        expect((await authed(token).post(`${base}/projects`).send(body({ advancePayment }))).status, JSON.stringify(advancePayment)).toBe(400);
+      }
+      expect(await counts()).toEqual(before);
+    });
+
+    it('answers a repeated request with the first project instead of making a second one', async () => {
+      const key = 'form-attempt-0001';
+      const first = await authed(token).post(`${base}/projects`).set('Idempotency-Key', key).send(body()).expect(201);
+      const again = await authed(token).post(`${base}/projects`).set('Idempotency-Key', key).send(body()).expect(201);
+      expect(again.headers['idempotency-replayed']).toBe('true');
+      expect(again.body.data.id).toBe(first.body.data.id);
+      expect(await counts()).toEqual({ projects: 1, clients: 1, payments: 1 });
+    });
+
+    it('lets the same attempt be corrected and sent again after a failure', async () => {
+      const key = 'form-attempt-0002';
+      const failed = await authed(token).post(`${base}/projects`).set('Idempotency-Key', key).send(body({ shoots: [{ title: 'Ceremony', shootDate: '2026-12-14', crewAssignments: [{ userId: '00000000-0000-4000-8000-000000000000', role: 'PHOTOGRAPHER' }] }] }));
+      expect(failed.status).toBeGreaterThanOrEqual(400);
+      const corrected = await authed(token).post(`${base}/projects`).set('Idempotency-Key', key).send(body()).expect(201);
+      expect(corrected.headers['idempotency-replayed']).toBeUndefined();
+      expect(await counts()).toEqual({ projects: 1, clients: 1, payments: 1 });
+    });
+  });
+
   it('enforces the project status machine and records every transition', async () => {
     const client = await createClient();
     const project = await createProject(client.id);
