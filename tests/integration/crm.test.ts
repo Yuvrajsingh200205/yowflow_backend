@@ -523,6 +523,30 @@ describe('CRM: clients, projects, events, shoots', () => {
     await authed(managerToken).get(`${base}/projects/${unassigned.body.data.id}`).expect(404);
   });
 
+  it('lets a person who may create projects but not view them all open the project they just made', async () => {
+    // A custom role: can create projects and take payments, but only sees projects it is on.
+    const role = await prisma.role.create({ data: { organizationId: org.organizationId, name: 'Booking desk', type: 'CUSTOM' } });
+    const keys = ['PROJECT_CREATE', 'PROJECT_VIEW', 'PAYMENT_MILESTONE_MANAGE', 'PAYMENT_CREATE', 'PAYMENT_VIEW', 'PAYMENT_MILESTONE_VIEW', 'CLIENT_CREATE', 'CLIENT_VIEW', 'TASK_CREATE'];
+    const perms = await prisma.permission.findMany({ where: { key: { in: keys } } });
+    await prisma.rolePermission.createMany({ data: perms.map((p) => ({ roleId: role.id, permissionId: p.id })) });
+    await prisma.userRole.deleteMany({ where: { userId: org.member.id } });
+    await prisma.userRole.create({ data: { userId: org.member.id, roleId: role.id } });
+    const desk = authed(await login(org.member));
+
+    const made = await desk.post(`${base}/projects`).send({
+      client: { displayName: 'Desk Couple', primaryPhone: '9876500011' }, name: 'Desk Couple — Wedding', type: 'WEDDING', weddingDate: '2026-12-14', totalQuotation: '100000.00',
+      advancePayment: { amount: 40000, paymentDate: '2026-10-20', paymentMethod: 'UPI' },
+    }).expect(201);
+    const id = made.body.data.id as string;
+    // Everything the screen asks for next works, instead of "Project not found".
+    await desk.get(`${base}/projects/${id}`).expect(200);
+    await desk.get(`${base}/payments?projectId=${id}`).expect(200);
+    await desk.get(`${base}/projects/${id}/payment-milestones`).expect(200);
+    // ...but they still do not see other people's projects.
+    const others = await authed(token).post(`${base}/projects`).send({ client: { displayName: 'Other Couple', primaryPhone: '9876500022' }, name: 'Other Couple — Wedding', type: 'WEDDING' }).expect(201);
+    await desk.get(`${base}/projects/${others.body.data.id}`).expect(404);
+  });
+
   it('enforces feature-level permissions inside an authorized project', async () => {
     const client = await createClient();
     const assignedToMember = await authed(token)

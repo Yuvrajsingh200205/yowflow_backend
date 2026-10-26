@@ -84,6 +84,8 @@ function assignedProjectWhere(auth: AuthContext): Prisma.ProjectWhereInput {
   if (canViewAllProjects(auth)) return {};
   return {
     OR: [
+      // Whoever made a project can always open it, even if nobody has assigned them to it yet.
+      { createdById: auth.userId },
       { managerId: auth.userId },
       { tasks: { some: { assigneeId: auth.userId, deletedAt: null } } },
       { shoots: { some: { deletedAt: null, assignments: { some: { userId: auth.userId } } } } },
